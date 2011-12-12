@@ -18,6 +18,7 @@
 extern "C" {
 #endif
 
+/** TODO this can probably be replaced by CLANGC_LINKAGE from common.h. */
 /* MSVC DLL import/export. */
 #ifdef _MSC_VER
   #ifdef _CLANGC_LIB_
@@ -97,7 +98,7 @@ typedef void *CXDiagnosticSet;
 /**
  * \brief Determine the number of diagnostics in a CXDiagnosticSet.
  */
-CINDEX_LINKAGE unsigned clang_getNumDiagnosticsInSet(CXDiagnosticSet Diags);
+CLANGC_LINKAGE unsigned clang_getNumDiagnosticsInSet(CXDiagnosticSet Diags);
 
 /**
  * \brief Retrieve a diagnostic associated with the given CXDiagnosticSet.
@@ -108,7 +109,7 @@ CINDEX_LINKAGE unsigned clang_getNumDiagnosticsInSet(CXDiagnosticSet Diags);
  * \returns the requested diagnostic. This diagnostic must be freed
  * via a call to \c clang_disposeDiagnostic().
  */
-CINDEX_LINKAGE CXDiagnostic clang_getDiagnosticInSet(CXDiagnosticSet Diags,
+CLANGC_LINKAGE CXDiagnostic clang_getDiagnosticInSet(CXDiagnosticSet Diags,
                                                      unsigned Index);
 
 
@@ -154,7 +155,7 @@ enum CXLoadDiag_Error {
  * \returns A loaded CXDiagnosticSet if successful, and NULL otherwise.  These
  *  diagnostics should be released using clang_disposeDiagnosticSet().
  */
-CINDEX_LINKAGE CXDiagnosticSet clang_loadDiagnostics(const char *file,
+CLANGC_LINKAGE CXDiagnosticSet clang_loadDiagnostics(const char *file,
                                                   enum CXLoadDiag_Error *error,
                                                   CXString *errorString);
 
@@ -167,13 +168,13 @@ CINDEX_LINKAGE void clang_disposeDiagnosticSet(CXDiagnosticSet Diags);
  * \brief Retrieve the child diagnostics of a CXDiagnostic.  This
  *  CXDiagnosticSet does not need to be released by clang_diposeDiagnosticSet.
  */
-CINDEX_LINKAGE CXDiagnosticSet clang_getChildDiagnostics(CXDiagnostic D);
+CLANGC_LINKAGE CXDiagnosticSet clang_getChildDiagnostics(CXDiagnostic D);
 
 /**
  * \brief Determine the number of diagnostics produced for the given
  * translation unit.
  */
-CINDEX_LINKAGE unsigned clang_getNumDiagnostics(CXTranslationUnit Unit);
+CLANGC_LINKAGE unsigned clang_getNumDiagnostics(CXTranslationUnit Unit);
 
 /**
  * \brief Retrieve a diagnostic associated with the given translation unit.
@@ -184,7 +185,7 @@ CINDEX_LINKAGE unsigned clang_getNumDiagnostics(CXTranslationUnit Unit);
  * \returns the requested diagnostic. This diagnostic must be freed
  * via a call to \c clang_disposeDiagnostic().
  */
-CINDEX_LINKAGE CXDiagnostic clang_getDiagnostic(CXTranslationUnit Unit,
+CLANGC_LINKAGE CXDiagnostic clang_getDiagnostic(CXTranslationUnit Unit,
                                                 unsigned Index);
 
 /**
@@ -193,13 +194,13 @@ CINDEX_LINKAGE CXDiagnostic clang_getDiagnostic(CXTranslationUnit Unit,
  *
  * \param Unit the translation unit to query.
  */
-CINDEX_LINKAGE CXDiagnosticSet
+CLANGC_LINKAGE CXDiagnosticSet
   clang_getDiagnosticSetFromTU(CXTranslationUnit Unit);
 
 /**
  * \brief Destroy a diagnostic.
  */
-CINDEX_LINKAGE void clang_disposeDiagnostic(CXDiagnostic Diagnostic);
+CLANGC_LINKAGE void clang_disposeDiagnostic(CXDiagnostic Diagnostic);
 
 /**
  * \brief Options to control the display of diagnostics.
@@ -284,7 +285,7 @@ enum CXDiagnosticDisplayOptions {
  *
  * \returns A new string containing for formatted diagnostic.
  */
-CINDEX_LINKAGE CXString clang_formatDiagnostic(CXDiagnostic Diagnostic,
+CLANGC_LINKAGE CXString clang_formatDiagnostic(CXDiagnostic Diagnostic,
                                                unsigned Options);
 
 /**
@@ -294,12 +295,12 @@ CINDEX_LINKAGE CXString clang_formatDiagnostic(CXDiagnostic Diagnostic,
  * \returns A set of display options suitable for use with \c
  * clang_displayDiagnostic().
  */
-CINDEX_LINKAGE unsigned clang_defaultDiagnosticDisplayOptions(void);
+CLANGC_LINKAGE unsigned clang_defaultDiagnosticDisplayOptions(void);
 
 /**
  * \brief Determine the severity of the given diagnostic.
  */
-CINDEX_LINKAGE enum CXDiagnosticSeverity
+CLANGC_LINKAGE enum CXDiagnosticSeverity
 clang_getDiagnosticSeverity(CXDiagnostic);
 
 /**
@@ -308,12 +309,12 @@ clang_getDiagnosticSeverity(CXDiagnostic);
  * This location is where Clang would print the caret ('^') when
  * displaying the diagnostic on the command line.
  */
-CINDEX_LINKAGE CXSourceLocation clang_getDiagnosticLocation(CXDiagnostic);
+CLANGC_LINKAGE CXSourceLocation clang_getDiagnosticLocation(CXDiagnostic);
 
 /**
  * \brief Retrieve the text of the given diagnostic.
  */
-CINDEX_LINKAGE CXString clang_getDiagnosticSpelling(CXDiagnostic);
+CLANGC_LINKAGE CXString clang_getDiagnosticSpelling(CXDiagnostic);
 
 /**
  * \brief Retrieve the name of the command-line option that enabled this
@@ -327,7 +328,7 @@ CINDEX_LINKAGE CXString clang_getDiagnosticSpelling(CXDiagnostic);
  * \returns A string that contains the command-line option used to enable this
  * warning, such as "-Wconversion" or "-pedantic".
  */
-CINDEX_LINKAGE CXString clang_getDiagnosticOption(CXDiagnostic Diag,
+CLANGC_LINKAGE CXString clang_getDiagnosticOption(CXDiagnostic Diag,
                                                   CXString *Disable);
 
 /**
@@ -340,7 +341,7 @@ CINDEX_LINKAGE CXString clang_getDiagnosticOption(CXDiagnostic Diag,
  * \returns The number of the category that contains this diagnostic, or zero
  * if this diagnostic is uncategorized.
  */
-CINDEX_LINKAGE unsigned clang_getDiagnosticCategory(CXDiagnostic);
+CLANGC_LINKAGE unsigned clang_getDiagnosticCategory(CXDiagnostic);
 
 /**
  * \brief Retrieve the name of a particular diagnostic category.
@@ -350,13 +351,13 @@ CINDEX_LINKAGE unsigned clang_getDiagnosticCategory(CXDiagnostic);
  *
  * \returns The name of the given diagnostic category.
  */
-CINDEX_LINKAGE CXString clang_getDiagnosticCategoryName(unsigned Category);
+CLANGC_LINKAGE CXString clang_getDiagnosticCategoryName(unsigned Category);
 
 /**
  * \brief Determine the number of source ranges associated with the given
  * diagnostic.
  */
-CINDEX_LINKAGE unsigned clang_getDiagnosticNumRanges(CXDiagnostic);
+CLANGC_LINKAGE unsigned clang_getDiagnosticNumRanges(CXDiagnostic);
 
 /**
  * \brief Retrieve a source range associated with the diagnostic.
@@ -371,14 +372,14 @@ CINDEX_LINKAGE unsigned clang_getDiagnosticNumRanges(CXDiagnostic);
  *
  * \returns the requested source range.
  */
-CINDEX_LINKAGE CXSourceRange clang_getDiagnosticRange(CXDiagnostic Diagnostic,
+CLANGC_LINKAGE CXSourceRange clang_getDiagnosticRange(CXDiagnostic Diagnostic,
                                                       unsigned Range);
 
 /**
  * \brief Determine the number of fix-it hints associated with the
  * given diagnostic.
  */
-CINDEX_LINKAGE unsigned clang_getDiagnosticNumFixIts(CXDiagnostic Diagnostic);
+CLANGC_LINKAGE unsigned clang_getDiagnosticNumFixIts(CXDiagnostic Diagnostic);
 
 /**
  * \brief Retrieve the replacement information for a given fix-it.
@@ -405,7 +406,7 @@ CINDEX_LINKAGE unsigned clang_getDiagnosticNumFixIts(CXDiagnostic Diagnostic);
  * \returns A string containing text that should be replace the source
  * code indicated by the \c ReplacementRange.
  */
-CINDEX_LINKAGE CXString clang_getDiagnosticFixIt(CXDiagnostic Diagnostic,
+CLANGC_LINKAGE CXString clang_getDiagnosticFixIt(CXDiagnostic Diagnostic,
                                                  unsigned FixIt,
                                                CXSourceRange *ReplacementRange);
 
