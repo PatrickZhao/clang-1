@@ -21,18 +21,23 @@ say:
    
 These are valid criticisms! I will defend its existence by saying:
 
-1) It lowers the barrier for other tools (like Python) to consume the compiler
-   API. New processes aren't always cheap (e.g. Windows). Having the ability to
-   execute a compiler in-process by merely providing a set of command-line
-   arguments could be very beneficial.
-2) Because the API is trivial, it is simple to implement and maintain. Why not?
+1) It does lower the barrier for API consumption. This API is extremely simple
+   to use and doesn't require any direct C++ consumption by C clients.
+2) Because the API is trivial, it is simple to implement and maintain. There is
+   little effort required to maintain it.
+3) It provides a fallback for actions that don't have lower-level C interface.
+4) It is convenient to launch the compiler without spawning a new process. This
+   is handy for platforms where new processes aren't cheap (e.g. Windows).
 
-CodeGen API
------------
+Code Generation API
+-------------------
 
 A C API into compiler code generation actions is provided. It is lower level
-than the compiler API and gives you an API for interacting with the result of
-the action.
+than the compiler API and gives you an API for interacting with the results of
+the action. This API is provided by CodeGen.h.
+
+This API is effectively a wrapper around clang::EmitBackendOutput(). It behaves
+very similarly to code llvm::clang::CodeGenAction.
 
 
 Common libclang functionality split out into common.h
@@ -49,3 +54,70 @@ But, I see now reason to do that at this time.
 This involved some minor changes to the Doxygen groupings to allow for the
 existence of a parent CLANGC group with everything else derived from that
 (previously CINDEX was the parent).
+
+Feature Justification
+=====================
+
+My ultimate goal with this feature is to foster development of more tools
+utilizing Clang and the benefits that a compiler-as-a-library brings.
+There is a large market that prefers consuming C to C++ (e.g. programming
+languages that have FFI libraries, such as Python). By exposing an
+easier-to-use (and stable) compiling API to these tools, we lower the
+barrier to producing tools and this naturally results in more tools being
+created. These tools form a rising tide which lifts all ships.
+
+After this work is complete, I would like to update the official Python binding
+to integrate with the compiler APIs. But, the C API comes first, so that is
+where the focus will be.
+
+Open Issues
+===========
+
+High-level Compiler API Design
+------------------------------
+
+Should the high-level compiler API distinguish CompilerInvocation and
+CompilerInstance APIs or should it roll them into 1? Today, there is a strong
+case for merging because there is little functionality on each. However, as
+functionality is eventually added, it quickly becomes desirable to separate
+things. Do we design for the future or is the API flexible?
+
+CompilerInstance Usability
+--------------------------
+
+CompilerInstance.h has a warning in ExecuteAction: "No other CompilerInstance
+state should have been initialized (this is an unchecked error)." What does
+that mean? Are CompilerInstance instances relying on global state? Can only
+one truly exist at one time? Can multiple instances exist over the course of
+a program? An LLVM context?
+
+Existing libclang Naming
+------------------------
+
+Existing functions in Index.h assume that the Index API is the only Clang C API
+in town. With the introduction of the compiler interfaces, I'm proving that
+wrong. Functions like clang_getFile(), which accepts a CXTranslationUnit as the
+first parameter, need to be renamed to reflect their module-specific nature.
+And, a bunch of types are prefixed with "CX" (the "X" meaning "Index"). These
+types aren't index-specific, so the names should probably change.
+
+I highly recommend revamping the C API to introduce forward-compatible naming
+conventions. At the same time, I also recommend splitting the different modules
+into separate .h files to enforce this separation. Unfortunately, this will
+break the C API in multiple places. I'm not sure what the project's versioning
+policies are, but a change like this doesn't come lightly. And, any changes
+made to a feature branch will likely suffer from bit rot as the C code is
+modified to accommodate C++ changes.
+
+Code Generation Output Handling
+-------------------------------
+
+What's the best way to handle output from code generation? Currently, the 
+designed C API only provides a mechanism to buffer to an in-memory object.
+Ideally, I'd like the output generation to be configurable and to support
+streaming. That would mean creating a wrapper for llvm::raw_ostream and the
+derived classes. This would be flexible and would be slightly more complex.
+
+We can always provide 1 function to output to an in-memory buffer and another
+version that takes an output object that controls where the output goes. I
+really need input from the core developer team here.
