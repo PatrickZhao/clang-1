@@ -22,7 +22,7 @@ extern "C" {
 #endif
 
 /**
- * \defgroup CCOMPILER libclang: C Interface to Clang Compiler
+ * \defgroup CCOMPILER High-level Compiler Interface
  * \ingroup CLANGC
  *
  * @{
