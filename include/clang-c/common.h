@@ -20,7 +20,6 @@
 extern "C" {
 #endif
 
-/** TODO this can probably be replaced by CLANGC_LINKAGE from common.h. */
 /* MSVC DLL import/export. */
 #ifdef _MSC_VER
   #ifdef _CLANGC_LIB_

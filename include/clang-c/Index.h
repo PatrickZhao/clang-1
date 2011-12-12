@@ -26,6 +26,7 @@ extern "C" {
 #endif
 
 /* MSVC DLL import/export. */
+/** TODO this can probably be replaced by CLANGC_LINKAGE from common.c */
 #ifdef _MSC_VER
   #ifdef _CINDEX_LIB_
     #define CINDEX_LINKAGE __declspec(dllexport)
