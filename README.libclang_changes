@@ -1,0 +1,51 @@
+This branch contains changes to libclang to expand functionality to generic
+compiling and code generation.
+
+Overview of Changes
+===================
+
+High-level Compiler API
+-----------------------
+
+A C API for high-level interaction with CompilerInstance and CompilerInvocation
+is provided in Compiler.h. These APIs are meant to provide a way for C to
+invoke *any* compiler action without having to launch a new process. It is
+effectively a convenience API.
+
+It is arguable whether this API is useful. Those opposed to its existence will
+say:
+
+1) What it is doing is trivial and simple for clients to implement themselves.
+2) It offers very little value because it provides very little insight into the
+   output of a compiler action.
+   
+These are valid criticisms! I will defend its existence by saying:
+
+1) It lowers the barrier for other tools (like Python) to consume the compiler
+   API. New processes aren't always cheap (e.g. Windows). Having the ability to
+   execute a compiler in-process by merely providing a set of command-line
+   arguments could be very beneficial.
+2) Because the API is trivial, it is simple to implement and maintain. Why not?
+
+CodeGen API
+-----------
+
+A C API into compiler code generation actions is provided. It is lower level
+than the compiler API and gives you an API for interacting with the result of
+the action.
+
+
+Common libclang functionality split out into common.h
+-----------------------------------------------------
+
+Since it didn't make sense to add this new functionality to Index.h nor did I
+feel it appropriate to add yet more content to a renamed .h file, I split out
+common functionality from Index.h into common.h. This means Index.h is now
+specific to code indexing.
+
+Ideally, we'd go a step further and move each C "module" into its own header.
+But, I see now reason to do that at this time.
+
+This involved some minor changes to the Doxygen groupings to allow for the
+existence of a parent CLANGC group with everything else derived from that
+(previously CINDEX was the parent).

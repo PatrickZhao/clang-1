@@ -46,8 +46,10 @@ set(SOURCES
   Indexing.cpp
   IndexingContext.cpp
   IndexingContext.h
-  ../../include/clang-c/Index.h
+  ../../include/clang-c/common.h
+  ../../include/clang-c/CodeGen.h
   ../../include/clang-c/Compiler.h
+  ../../include/clang-c/Index.h
   )
 
 if( LLVM_ENABLE_PIC )
@@ -59,6 +61,7 @@ if( LLVM_ENABLE_PIC )
     OUTPUT_NAME "libclang"
     VERSION ${LIBCLANG_LIBRARY_VERSION}
     DEFINE_SYMBOL _CINDEX_LIB_
+    DEFINE_SYMBOL _CCOMMON_LIB_
     DEFINE_SYMBOL _CCOMPILER_LIB_)
 
   if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
