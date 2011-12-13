@@ -63,7 +63,7 @@ CLANGC_LINKAGE CCCompilerInvocation clang_createCompilerInvocation(
  * \brief Destroy the specified CCompilerInvocation instance.
  *
  * This should be called for each CCompilerInvocation produced by
- clang_createCompilerInvocation.
+ * clang_createCompilerInvocation().
  */
 CLANGC_LINKAGE void clang_disposeCompilerInvocation(CCCompilerInvocation i);
 

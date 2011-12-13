@@ -26,7 +26,7 @@ extern "C" {
  *
  * This interfaces allows you to interact with the compiler's code generation
  * facilities. With it, you can emit assembly, LLVM bitcode, native object
- * files, and other actions supported by the CodeGenAction classes.
+ * files, and other actions supported by the code generator.
  *
  * The functionality in this interface is effectively a wrapper around
  * llvm::clang::CodeGenAction and llvm::clang::EmitBackendOutput().
@@ -43,7 +43,8 @@ extern "C" {
  *     input. See clang_codegen_createOptionsFromArguments().
  *  -# Create the output, a CGResult instance. See
  *     clang_codegen_generateOutput().
- *  -# Validate that output was generated without error.
+ *  -# Validate that output was generated without error (e.g. by examining the
+ *     diagnostic result set from the CGResult).
  *  -# Do something with your output.
  *  -# Dispose of your CGResult, CGOptions, and CGInput instances.
  *

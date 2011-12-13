@@ -1,5 +1,5 @@
-This branch contains changes to libclang to expand functionality to generic
-compiling and code generation.
+This branch contains changes to libclang to expand functionality to include
+support for general compiling and code generation.
 
 Overview of Changes
 ===================
@@ -22,12 +22,16 @@ say:
 These are valid criticisms! I will defend its existence by saying:
 
 1) It does lower the barrier for API consumption. This API is extremely simple
-   to use and doesn't require any direct C++ consumption by C clients.
-2) Because the API is trivial, it is simple to implement and maintain. There is
-   little effort required to maintain it.
-3) It provides a fallback for actions that don't have lower-level C interface.
+   to use and doesn't require any direct C++ consumption by C clients. When you
+   are working in C, any help is much appreciated.
+2) Because the API is trivial, it is simple to implement and maintain. There
+   should be very little overhead to keeping the implementation current.
+3) It provides a fallback for actions that don't (yet) have a lower-level C
+   interface.
 4) It is convenient to launch the compiler without spawning a new process. This
-   is handy for platforms where new processes aren't cheap (e.g. Windows).
+   is handy for platforms where new processes aren't cheap (e.g. Windows). And,
+   you save the startup costs of all the new clang executable instances. This
+   can add up when you are invoking the compiler frequently.
 
 Code Generation API
 -------------------
@@ -37,23 +41,22 @@ than the compiler API and gives you an API for interacting with the results of
 the action. This API is provided by CodeGen.h.
 
 This API is effectively a wrapper around clang::EmitBackendOutput(). It behaves
-very similarly to code llvm::clang::CodeGenAction.
-
+very similarly to the frontend actions defined in llvm::clang::CodeGenAction.
 
 Common libclang functionality split out into common.h
 -----------------------------------------------------
 
 Since it didn't make sense to add this new functionality to Index.h nor did I
 feel it appropriate to add yet more content to a renamed .h file, I split out
-common functionality from Index.h into common.h. This means Index.h is now
+common functionality from Index.h into common.h. This means Index.h is now more
 specific to code indexing.
-
-Ideally, we'd go a step further and move each C "module" into its own header.
-But, I see now reason to do that at this time.
 
 This involved some minor changes to the Doxygen groupings to allow for the
 existence of a parent CLANGC group with everything else derived from that
 (previously CINDEX was the parent).
+
+This change might have disturbed the hornets nest as far as the composition
+of the C API goes. See the open issues section below.
 
 Feature Justification
 =====================
@@ -73,6 +76,13 @@ where the focus will be.
 Open Issues
 ===========
 
+I'm a Clang N00b
+----------------
+
+This is my first experience hacking on Clang. I probably made some invalid
+assumptions and failed to identify gotchas in the proposal. That's where the
+community can step in and help me get things right.
+
 High-level Compiler API Design
 ------------------------------
 
@@ -91,23 +101,38 @@ that mean? Are CompilerInstance instances relying on global state? Can only
 one truly exist at one time? Can multiple instances exist over the course of
 a program? An LLVM context?
 
-Existing libclang Naming
-------------------------
+Existing libclang Naming and Structure
+--------------------------------------
 
 Existing functions in Index.h assume that the Index API is the only Clang C API
 in town. With the introduction of the compiler interfaces, I'm proving that
 wrong. Functions like clang_getFile(), which accepts a CXTranslationUnit as the
 first parameter, need to be renamed to reflect their module-specific nature.
-And, a bunch of types are prefixed with "CX" (the "X" meaning "Index"). These
-types aren't index-specific, so the names should probably change.
+(Remember that C doesn't have the parameter validation facilities of C++ and
+most of the types in the C API are typedefs to void *.) Furthermore, a bunch of
+existing C types are prefixed with "CX" (the "X" meaning "Index"). These types
+aren't index-specific, so the names need to change.
 
-I highly recommend revamping the C API to introduce forward-compatible naming
-conventions. At the same time, I also recommend splitting the different modules
-into separate .h files to enforce this separation. Unfortunately, this will
-break the C API in multiple places. I'm not sure what the project's versioning
-policies are, but a change like this doesn't come lightly. And, any changes
-made to a feature branch will likely suffer from bit rot as the C code is
-modified to accommodate C++ changes.
+It seems unavoidable that the C API needs to be refactored with more concern
+for future compatibility and reusability of components in multiple modules. In
+other words, generic components in the C API shouldn't assume they are
+affiliated with a specific module (like Indexing) unless they are given module-
+specific names. I recommend splitting components into module-specific .h files
+and adopting a per-module naming convention, like clang_<module>_<func> (e.g.
+clang_diagnostics_getDiagnosticFromSet()).
+
+Unfortunately, this would break the C API in multiple places. I'm not sure what
+Clang's versioning policies are, but this type of change wouldn't come lightly.
+Ideally we'd form a clean break from the existing API. But, we could provide
+backwards compatibility for a limited time if needed.
+
+The problem only gets worse over time: Clang devs will need to spend more
+effort to refactor the API and the growing C API consumer base will
+collectively become louder in their ire at the C API refactorings. Since the
+C API is supposed to be stable over time, I vote for dealing with the pain now
+before it grows any further. But, I'm not a Clang developer, so I'll heed to
+the community. Just know that the refactoring to support code generation will
+involve lots of code moving and could result in some awkward code.
 
 Code Generation Output Handling
 -------------------------------
@@ -116,8 +141,13 @@ What's the best way to handle output from code generation? Currently, the
 designed C API only provides a mechanism to buffer to an in-memory object.
 Ideally, I'd like the output generation to be configurable and to support
 streaming. That would mean creating a wrapper for llvm::raw_ostream and the
-derived classes. This would be flexible and would be slightly more complex.
+derived classes. This would be flexible at a slight increase in complexity.
 
-We can always provide 1 function to output to an in-memory buffer and another
-version that takes an output object that controls where the output goes. I
-really need input from the core developer team here.
+I suppose we can always provide multiple APIs for code generation: 1 to output
+to an in-memory object and another to support controllable output.
+
+Compiler API Resource Path Handling
+-----------------------------------
+
+Should the compiler API be accepted, there is an open issue on how to handle
+default resource paths. See the TODO in Compiler.h.
