@@ -104,19 +104,18 @@ a program? An LLVM context?
 Existing libclang Naming and Structure
 --------------------------------------
 
-Existing functions in Index.h assume that the Index API is the only Clang C API
-in town. With the introduction of the compiler interfaces, I'm proving that
-wrong. Functions like clang_getFile(), which accepts a CXTranslationUnit as the
-first parameter, need to be renamed to reflect their module-specific nature.
-(Remember that C doesn't have the parameter validation facilities of C++ and
-most of the types in the C API are typedefs to void *.) Furthermore, a bunch of
-existing C types are prefixed with "CX" (the "X" meaning "Index"). These types
-aren't index-specific, so the names need to change.
+Many existing functions in Index.h are not properly type agnostic. For example,
+clang_getFile() assumes a CXTranslationUnit is the first parameter. Will a
+CXTranslationUnit be the only thing you will ever be able to get a file from?
+A much better name is clang_getFileFromTranslationUnit() or
+clang_translationunit_getFile(). In addition, all the types are prefixed with
+"CX" with "X" standing for "Index." "Index" is extremely vague and isn't very
+helpful.
 
 It seems unavoidable that the C API needs to be refactored with more concern
 for future compatibility and reusability of components in multiple modules. In
 other words, generic components in the C API shouldn't assume they are
-affiliated with a specific module (like Indexing) unless they are given module-
+affiliated with a specific module (like Index) unless they are given module-
 specific names. I recommend splitting components into module-specific .h files
 and adopting a per-module naming convention, like clang_<module>_<func> (e.g.
 clang_diagnostics_getDiagnosticFromSet()).
