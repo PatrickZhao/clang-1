@@ -900,6 +900,11 @@ void DeclPrinter::VisitObjCInterfaceDecl(ObjCInterfaceDecl *OID) {
   std::string I = OID->getNameAsString();
   ObjCInterfaceDecl *SID = OID->getSuperClass();
 
+  if (!OID->isThisDeclarationADefinition()) {
+    Out << "@class " << I << ";";
+    return;
+  }
+  
   if (SID)
     Out << "@interface " << I << " : " << *SID;
   else

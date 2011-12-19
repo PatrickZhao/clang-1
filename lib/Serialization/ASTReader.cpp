@@ -1846,6 +1846,10 @@ ASTReader::ReadASTBlock(ModuleFile &F) {
         F.DeclRemap.insert(std::make_pair(LocalBaseDeclID, 
                                           F.BaseDeclID - LocalBaseDeclID));
         
+        // Introduce the global -> local mapping for declarations within this
+        // module.
+        F.GlobalToLocalDeclIDs[&F] = LocalBaseDeclID;
+        
         DeclsLoaded.resize(DeclsLoaded.size() + F.LocalNumDecls);
       }
       break;
@@ -2125,6 +2129,9 @@ ASTReader::ReadASTBlock(ModuleFile &F) {
         
         TypeRemap.insert(std::make_pair(TypeIndexOffset, 
                                     OM->BaseTypeIndex - TypeIndexOffset));
+
+        // Global -> local mappings.
+        F.GlobalToLocalDeclIDs[OM] = DeclIDOffset;
       }
       break;
     }
@@ -2396,7 +2403,17 @@ ASTReader::ReadASTBlock(ModuleFile &F) {
         }
       }
       break;
+    }
+        
+    case LOCAL_REDECLARATIONS: {
+      if (F.LocalNumRedeclarationsInfos != 0) {
+        Error("duplicate LOCAL_REDECLARATIONS record in AST file");
+        return Failure;
+      }
       
+      F.LocalNumRedeclarationsInfos = Record[0];
+      F.RedeclarationsInfo = (const LocalRedeclarationsInfo *)BlobStart;
+      break;
     }
     }
   }
@@ -4559,13 +4576,30 @@ Decl *ASTReader::GetDecl(DeclID ID) {
     return 0;
   }
   
-if (!DeclsLoaded[Index]) {
+  if (!DeclsLoaded[Index]) {
     ReadDeclRecord(ID);
     if (DeserializationListener)
       DeserializationListener->DeclRead(ID, DeclsLoaded[Index]);
   }
 
   return DeclsLoaded[Index];
+}
+
+DeclID ASTReader::mapGlobalIDToModuleFileGlobalID(ModuleFile &M, 
+                                                  DeclID GlobalID) {
+  if (GlobalID < NUM_PREDEF_DECL_IDS)
+    return GlobalID;
+  
+  GlobalDeclMapType::const_iterator I = GlobalDeclMap.find(GlobalID);
+  assert(I != GlobalDeclMap.end() && "Corrupted global declaration map");
+  ModuleFile *Owner = I->second;
+
+  llvm::DenseMap<ModuleFile *, serialization::DeclID>::iterator Pos
+    = M.GlobalToLocalDeclIDs.find(Owner);
+  if (Pos == M.GlobalToLocalDeclIDs.end())
+    return 0;
+      
+  return GlobalID - Owner->BaseDeclID + Pos->second;
 }
 
 serialization::DeclID ASTReader::ReadDeclID(ModuleFile &F, 
@@ -6024,47 +6058,72 @@ void ASTReader::ClearSwitchCaseIDs() {
   SwitchCaseStmts.clear();
 }
 
+void ASTReader::finishPendingActions() {
+  while (!PendingIdentifierInfos.empty() ||
+         !PendingPreviousDecls.empty() ||
+         !PendingDeclChains.empty() ||
+         !PendingChainedObjCCategories.empty()) {
+
+    // If any identifiers with corresponding top-level declarations have
+    // been loaded, load those declarations now.
+    while (!PendingIdentifierInfos.empty()) {
+      SetGloballyVisibleDecls(PendingIdentifierInfos.front().II,
+                              PendingIdentifierInfos.front().DeclIDs, true);
+      PendingIdentifierInfos.pop_front();
+    }
+  
+    // Ready to load previous declarations of Decls that were delayed.
+    while (!PendingPreviousDecls.empty()) {
+      loadAndAttachPreviousDecl(PendingPreviousDecls.front().first,
+                                PendingPreviousDecls.front().second);
+      PendingPreviousDecls.pop_front();
+    }
+  
+    // Load pending declaration chains.
+    for (unsigned I = 0; I != PendingDeclChains.size(); ++I) {
+      loadPendingDeclChain(PendingDeclChains[I]);
+    }
+    PendingDeclChains.clear();
+
+    for (std::vector<std::pair<ObjCInterfaceDecl *,
+                               serialization::DeclID> >::iterator
+           I = PendingChainedObjCCategories.begin(),
+           E = PendingChainedObjCCategories.end(); I != E; ++I) {
+      loadObjCChainedCategories(I->second, I->first);
+    }
+    PendingChainedObjCCategories.clear();
+  }
+}
+
 void ASTReader::FinishedDeserializing() {
   assert(NumCurrentElementsDeserializing &&
          "FinishedDeserializing not paired with StartedDeserializing");
   if (NumCurrentElementsDeserializing == 1) {
-    do {
-      // If any identifiers with corresponding top-level declarations have
-      // been loaded, load those declarations now.
-      while (!PendingIdentifierInfos.empty()) {
-        SetGloballyVisibleDecls(PendingIdentifierInfos.front().II,
-                                PendingIdentifierInfos.front().DeclIDs, true);
-        PendingIdentifierInfos.pop_front();
-      }
-  
-      // Ready to load previous declarations of Decls that were delayed.
-      while (!PendingPreviousDecls.empty()) {
-        loadAndAttachPreviousDecl(PendingPreviousDecls.front().first,
-                                  PendingPreviousDecls.front().second);
-        PendingPreviousDecls.pop_front();
-      }
-  
-      for (std::vector<std::pair<ObjCInterfaceDecl *,
-                                 serialization::DeclID> >::iterator
-             I = PendingChainedObjCCategories.begin(),
-             E = PendingChainedObjCCategories.end(); I != E; ++I) {
-        loadObjCChainedCategories(I->second, I->first);
-      }
-      PendingChainedObjCCategories.clear();
-  
+
+    while (Consumer && !InterestingDecls.empty()) {
+      finishPendingActions();
+
       // We are not in recursive loading, so it's safe to pass the "interesting"
       // decls to the consumer.
-      if (Consumer && !InterestingDecls.empty()) {
-        Decl *D = InterestingDecls.front();
-        InterestingDecls.pop_front();
+      Decl *D = InterestingDecls.front();
+      InterestingDecls.pop_front();
 
-        PassInterestingDeclToConsumer(D);
+      // Fully load the interesting decls, including deserializing their
+      // bodies, so that any other declarations that get referenced in the
+      // body will be fully deserialized by the time we pass them to the
+      // consumer.
+      if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
+        if (FD->doesThisDeclarationHaveABody()) {
+          FD->getBody();
+          finishPendingActions();
+        }
       }
 
-    } while ((Consumer && !InterestingDecls.empty()) ||
-             !PendingIdentifierInfos.empty() ||
-             !PendingPreviousDecls.empty() ||
-             !PendingChainedObjCCategories.empty());
+      PassInterestingDeclToConsumer(D);
+    }
+
+    finishPendingActions();
+    PendingDeclChainsKnown.clear();
 
     assert(PendingForwardRefs.size() == 0 &&
            "Some forward refs did not get linked to the definition!");

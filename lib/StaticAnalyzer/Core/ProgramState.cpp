@@ -653,9 +653,25 @@ bool ProgramState::scanReachableSymbols(const MemRegion * const *I,
 
 const ProgramState* ProgramState::addTaint(const Stmt *S,
                                            TaintTagType Kind) const {
+  if (const Expr *E = dyn_cast_or_null<Expr>(S))
+    S = E->IgnoreParens();
+
   SymbolRef Sym = getSVal(S).getAsSymbol();
-  assert(Sym && "Cannot add taint to statements whose value is not a symbol");
-  return addTaint(Sym, Kind);
+  if (Sym)
+    return addTaint(Sym, Kind);
+
+  const MemRegion *R = getSVal(S).getAsRegion();
+  addTaint(R, Kind);
+
+  // Cannot add taint, so just return the state.
+  return this;
+}
+
+const ProgramState* ProgramState::addTaint(const MemRegion *R,
+                                           TaintTagType Kind) const {
+  if (const SymbolicRegion *SR = dyn_cast_or_null<SymbolicRegion>(R))
+    return addTaint(SR->getSymbol(), Kind);
+  return this;
 }
 
 const ProgramState* ProgramState::addTaint(SymbolRef Sym,
@@ -666,6 +682,9 @@ const ProgramState* ProgramState::addTaint(SymbolRef Sym,
 }
 
 bool ProgramState::isTainted(const Stmt *S, TaintTagType Kind) const {
+  if (const Expr *E = dyn_cast_or_null<Expr>(S))
+    S = E->IgnoreParens();
+
   SVal val = getSVal(S);
   return isTainted(val, Kind);
 }
@@ -673,8 +692,8 @@ bool ProgramState::isTainted(const Stmt *S, TaintTagType Kind) const {
 bool ProgramState::isTainted(SVal V, TaintTagType Kind) const {
   if (const SymExpr *Sym = V.getAsSymExpr())
     return isTainted(Sym, Kind);
-  if (loc::MemRegionVal *RegVal = dyn_cast<loc::MemRegionVal>(&V))
-    return isTainted(RegVal->getRegion(), Kind);
+  if (const MemRegion *Reg = V.getAsRegion())
+    return isTainted(Reg, Kind);
   return false;
 }
 

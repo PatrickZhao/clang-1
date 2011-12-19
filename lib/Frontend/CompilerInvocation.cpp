@@ -354,6 +354,11 @@ static void DiagnosticOptsToArgs(const DiagnosticOptions &Opts,
     Res.push_back("-ftemplate-backtrace-limit");
     Res.push_back(llvm::utostr(Opts.TemplateBacktraceLimit));
   }
+  if (Opts.ConstexprBacktraceLimit
+                        != DiagnosticOptions::DefaultConstexprBacktraceLimit) {
+    Res.push_back("-fconstexpr-backtrace-limit");
+    Res.push_back(llvm::utostr(Opts.ConstexprBacktraceLimit));
+  }
 
   if (Opts.TabStop != DiagnosticOptions::DefaultTabStop) {
     Res.push_back("-ftabstop");
@@ -1229,6 +1234,10 @@ static void ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
     = Args.getLastArgIntValue(OPT_ftemplate_backtrace_limit,
                          DiagnosticOptions::DefaultTemplateBacktraceLimit,
                          Diags);
+  Opts.ConstexprBacktraceLimit
+    = Args.getLastArgIntValue(OPT_fconstexpr_backtrace_limit,
+                         DiagnosticOptions::DefaultConstexprBacktraceLimit,
+                         Diags);
   Opts.TabStop = Args.getLastArgIntValue(OPT_ftabstop,
                                     DiagnosticOptions::DefaultTabStop, Diags);
   if (Opts.TabStop == 0 || Opts.TabStop > DiagnosticOptions::MaxTabStop) {
@@ -1818,6 +1827,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.SinglePrecisionConstants = Args.hasArg(OPT_cl_single_precision_constant);
   Opts.FastRelaxedMath = Args.hasArg(OPT_cl_fast_relaxed_math);
   Opts.MRTD = Args.hasArg(OPT_mrtd);
+  Opts.HexagonQdsp6Compat = Args.hasArg(OPT_mqdsp6_compat);
   Opts.FakeAddressSpaceMap = Args.hasArg(OPT_ffake_address_space_map);
   Opts.ParseUnknownAnytype = Args.hasArg(OPT_funknown_anytype);
   Opts.DebuggerSupport = Args.hasArg(OPT_fdebugger_support);

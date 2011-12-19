@@ -1483,13 +1483,21 @@ void RecordLayoutBuilder::LayoutFields(const RecordDecl *D) {
         uint64_t TypeSize = FieldInfo.first;
         unsigned FieldAlign = FieldInfo.second;
         // This check is needed for 'long long' in -m32 mode.
-        if (TypeSize > FieldAlign)
+        if (TypeSize > FieldAlign &&
+            (Context.hasSameType(FD->getType(), 
+                                Context.UnsignedLongLongTy) 
+             ||Context.hasSameType(FD->getType(), 
+                                   Context.LongLongTy)))
           FieldAlign = TypeSize;
         FieldInfo = Context.getTypeInfo(LastFD->getType());
         uint64_t TypeSizeLastFD = FieldInfo.first;
         unsigned FieldAlignLastFD = FieldInfo.second;
         // This check is needed for 'long long' in -m32 mode.
-        if (TypeSizeLastFD > FieldAlignLastFD)
+        if (TypeSizeLastFD > FieldAlignLastFD &&
+            (Context.hasSameType(LastFD->getType(), 
+                                Context.UnsignedLongLongTy)
+             || Context.hasSameType(LastFD->getType(), 
+                                    Context.LongLongTy)))
           FieldAlignLastFD = TypeSizeLastFD;
         
         if (TypeSizeLastFD != TypeSize) {
@@ -1640,7 +1648,10 @@ void RecordLayoutBuilder::LayoutBitField(const FieldDecl *D) {
   unsigned FieldAlign = FieldInfo.second;
   
   // This check is needed for 'long long' in -m32 mode.
-  if (IsMsStruct && (TypeSize > FieldAlign))
+  if (IsMsStruct && (TypeSize > FieldAlign) && 
+      (Context.hasSameType(D->getType(), 
+                           Context.UnsignedLongLongTy) 
+       || Context.hasSameType(D->getType(), Context.LongLongTy)))
     FieldAlign = TypeSize;
 
   if (ZeroLengthBitfield) {
@@ -2150,7 +2161,7 @@ const CXXMethodDecl *ASTContext::getKeyFunction(const CXXRecordDecl *RD) {
 const ASTRecordLayout &
 ASTContext::getObjCLayout(const ObjCInterfaceDecl *D,
                           const ObjCImplementationDecl *Impl) const {
-  assert(!D->isForwardDecl() && "Invalid interface decl!");
+  assert(D->isThisDeclarationADefinition() && "Invalid interface decl!");
 
   // Look up this layout, if already laid out, return what we have.
   ObjCContainerDecl *Key =

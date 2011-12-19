@@ -125,6 +125,30 @@ namespace clang {
   };
 }
 
+static bool isFirstDeclInFile(Decl *D) {
+  // FIXME: There must be a better way to abstract Redeclarable<T> into a 
+  // more-general "redeclarable type".
+  if (TagDecl *Tag = dyn_cast<TagDecl>(D))
+    return !Tag->getPreviousDeclaration() ||
+           Tag->getPreviousDeclaration()->isFromASTFile();
+  if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D))
+    return !FD->getPreviousDeclaration() ||
+           FD->getPreviousDeclaration()->isFromASTFile();
+  if (VarDecl *VD = dyn_cast<VarDecl>(D))
+    return !VD->getPreviousDeclaration() ||
+           VD->getPreviousDeclaration()->isFromASTFile();
+  if (TypedefNameDecl *TD = dyn_cast<TypedefNameDecl>(D))
+    return !TD->getPreviousDeclaration() ||
+           TD->getPreviousDeclaration()->isFromASTFile();
+  if (ObjCInterfaceDecl *ID = dyn_cast<ObjCInterfaceDecl>(D))
+    return !ID->getPreviousDeclaration() ||
+            ID->getPreviousDeclaration()->isFromASTFile();
+  
+  RedeclarableTemplateDecl *RTD = cast<RedeclarableTemplateDecl>(D);
+  return !RTD->getPreviousDeclaration() ||
+          RTD->getPreviousDeclaration()->isFromASTFile();  
+}
+
 void ASTDeclWriter::Visit(Decl *D) {
   DeclVisitor<ASTDeclWriter>::Visit(D);
 
@@ -177,13 +201,14 @@ void ASTDeclWriter::VisitTypeDecl(TypeDecl *D) {
 }
 
 void ASTDeclWriter::VisitTypedefDecl(TypedefDecl *D) {
+  VisitRedeclarable(D);
   VisitTypeDecl(D);
   Writer.AddTypeSourceInfo(D->getTypeSourceInfo(), Record);
 
   if (!D->hasAttrs() &&
       !D->isImplicit() &&
       !D->isUsed(false) &&
-      D->RedeclLink.getNext() == D &&
+      isFirstDeclInFile(D) &&
       !D->isInvalidDecl() &&
       !D->isReferenced() &&
       !D->isTopLevelDeclInObjCContainer() &&
@@ -196,6 +221,7 @@ void ASTDeclWriter::VisitTypedefDecl(TypedefDecl *D) {
 }
 
 void ASTDeclWriter::VisitTypeAliasDecl(TypeAliasDecl *D) {
+  VisitRedeclarable(D);
   VisitTypeDecl(D);
   Writer.AddTypeSourceInfo(D->getTypeSourceInfo(), Record);
   Code = serialization::DECL_TYPEALIAS;
@@ -234,7 +260,7 @@ void ASTDeclWriter::VisitEnumDecl(EnumDecl *D) {
       !D->isImplicit() &&
       !D->isUsed(false) &&
       !D->hasExtInfo() &&
-      D->RedeclLink.getNext() == D &&
+      isFirstDeclInFile(D) &&
       !D->isInvalidDecl() &&
       !D->isReferenced() &&
       !D->isTopLevelDeclInObjCContainer() &&
@@ -258,7 +284,7 @@ void ASTDeclWriter::VisitRecordDecl(RecordDecl *D) {
       !D->isImplicit() &&
       !D->isUsed(false) &&
       !D->hasExtInfo() &&
-      D->RedeclLink.getNext() == D &&
+      isFirstDeclInFile(D) &&
       !D->isInvalidDecl() &&
       !D->isReferenced() &&
       !D->isTopLevelDeclInObjCContainer() &&
@@ -447,39 +473,49 @@ void ASTDeclWriter::VisitObjCContainerDecl(ObjCContainerDecl *D) {
 }
 
 void ASTDeclWriter::VisitObjCInterfaceDecl(ObjCInterfaceDecl *D) {
+  VisitRedeclarable(D);
   VisitObjCContainerDecl(D);
   Writer.AddTypeRef(QualType(D->getTypeForDecl(), 0), Record);
-  Writer.AddDeclRef(D->getSuperClass(), Record);
 
-  // Write out the protocols that are directly referenced by the @interface.
-  Record.push_back(D->ReferencedProtocols.size());
-  for (ObjCInterfaceDecl::protocol_iterator P = D->protocol_begin(),
-         PEnd = D->protocol_end();
-       P != PEnd; ++P)
-    Writer.AddDeclRef(*P, Record);
-  for (ObjCInterfaceDecl::protocol_loc_iterator PL = D->protocol_loc_begin(),
-         PLEnd = D->protocol_loc_end();
-       PL != PLEnd; ++PL)
-    Writer.AddSourceLocation(*PL, Record);
-
-  // Write out the protocols that are transitively referenced.
-  Record.push_back(D->AllReferencedProtocols.size());
-  for (ObjCList<ObjCProtocolDecl>::iterator
-        P = D->AllReferencedProtocols.begin(),
-        PEnd = D->AllReferencedProtocols.end();
-       P != PEnd; ++P)
-    Writer.AddDeclRef(*P, Record);
+  ObjCInterfaceDecl *Def = D->getDefinition();
+  Writer.AddDeclRef(Def, Record);
   
-  // Write out the ivars.
-  Record.push_back(D->ivar_size());
-  for (ObjCInterfaceDecl::ivar_iterator I = D->ivar_begin(),
-                                     IEnd = D->ivar_end(); I != IEnd; ++I)
-    Writer.AddDeclRef(*I, Record);
-  Writer.AddDeclRef(D->getCategoryList(), Record);
-  Record.push_back(D->isInitiallyForwardDecl());
-  Record.push_back(D->isForwardDecl());
-  Writer.AddSourceLocation(D->getSuperClassLoc(), Record);
-  Writer.AddSourceLocation(D->getLocEnd(), Record);
+  if (D == Def) {
+    // Write the DefinitionData
+    ObjCInterfaceDecl::DefinitionData &Data = D->data();
+    
+    Writer.AddDeclRef(D->getSuperClass(), Record);
+    Writer.AddSourceLocation(D->getSuperClassLoc(), Record);
+    Writer.AddSourceLocation(D->getEndOfDefinitionLoc(), Record);
+
+    // Write out the protocols that are directly referenced by the @interface.
+    Record.push_back(Data.ReferencedProtocols.size());
+    for (ObjCInterfaceDecl::protocol_iterator P = D->protocol_begin(),
+                                           PEnd = D->protocol_end();
+         P != PEnd; ++P)
+      Writer.AddDeclRef(*P, Record);
+    for (ObjCInterfaceDecl::protocol_loc_iterator PL = D->protocol_loc_begin(),
+         PLEnd = D->protocol_loc_end();
+         PL != PLEnd; ++PL)
+      Writer.AddSourceLocation(*PL, Record);
+    
+    // Write out the protocols that are transitively referenced.
+    Record.push_back(Data.AllReferencedProtocols.size());
+    for (ObjCList<ObjCProtocolDecl>::iterator
+              P = Data.AllReferencedProtocols.begin(),
+           PEnd = Data.AllReferencedProtocols.end();
+         P != PEnd; ++P)
+      Writer.AddDeclRef(*P, Record);
+    
+    // Write out the ivars.
+    Record.push_back(D->ivar_size());
+    for (ObjCInterfaceDecl::ivar_iterator I = D->ivar_begin(),
+                                       IEnd = D->ivar_end(); I != IEnd; ++I)
+      Writer.AddDeclRef(*I, Record);
+    
+    Writer.AddDeclRef(D->getCategoryList(), Record);
+  }  
+  
   Code = serialization::DECL_OBJC_INTERFACE;
 }
 
@@ -526,8 +562,8 @@ void ASTDeclWriter::VisitObjCAtDefsFieldDecl(ObjCAtDefsFieldDecl *D) {
 
 void ASTDeclWriter::VisitObjCClassDecl(ObjCClassDecl *D) {
   VisitDecl(D);
-  Writer.AddDeclRef(D->getForwardInterfaceDecl(), Record);
-  Writer.AddSourceLocation(D->getForwardDecl()->getLocation(), Record);
+  Writer.AddDeclRef(D->Interface, Record);
+  Writer.AddSourceLocation(D->InterfaceLoc, Record);
   Code = serialization::DECL_OBJC_CLASS;
 }
 
@@ -691,7 +727,7 @@ void ASTDeclWriter::VisitVarDecl(VarDecl *D) {
       !D->isModulePrivate() &&
       D->getDeclName().getNameKind() == DeclarationName::Identifier &&
       !D->hasExtInfo() &&
-      D->RedeclLink.getNext() == D &&
+      isFirstDeclInFile(D) &&
       !D->hasCXXDirectInitializer() &&
       D->getInit() == 0 &&
       !isa<ParmVarDecl>(D) &&
@@ -976,7 +1012,6 @@ void ASTDeclWriter::VisitCXXConversionDecl(CXXConversionDecl *D) {
 
 void ASTDeclWriter::VisitImportDecl(ImportDecl *D) {
   VisitDecl(D);
-  Writer.SubmoduleIDs[D->getImportedModule()];
   ArrayRef<SourceLocation> IdentifierLocs = D->getIdentifierLocs();
   Record.push_back(!IdentifierLocs.empty());
   if (IdentifierLocs.empty()) {
@@ -1258,30 +1293,24 @@ void ASTDeclWriter::VisitDeclContext(DeclContext *DC, uint64_t LexicalOffset,
 
 template <typename T>
 void ASTDeclWriter::VisitRedeclarable(Redeclarable<T> *D) {
-  enum { NoRedeclaration = 0, PointsToPrevious, PointsToLatest };
-  if (D->RedeclLink.getNext() == D) {
-    Record.push_back(NoRedeclaration);
-  } else {
-    if (D->RedeclLink.NextIsPrevious()) {
-      Record.push_back(PointsToPrevious);
-      Writer.AddDeclRef(D->getPreviousDeclaration(), Record);
-      Writer.AddDeclRef(D->getFirstDeclaration(), Record);
-    } else {
-      Record.push_back(PointsToLatest);
-      Writer.AddDeclRef(D->RedeclLink.getPointer(), Record);
-    }
-  }
-
+  enum { FirstInFile, PointsToPrevious };
   T *First = D->getFirstDeclaration();
-  T *ThisDecl = static_cast<T*>(D);
-  // If this is a most recent redeclaration that is pointed to by a first decl
-  // in a chained PCH, keep track of the association with the map so we can
-  // update the first decl during AST reading.
-  if (ThisDecl != First && First->getMostRecentDeclaration() == ThisDecl &&
-      First->isFromASTFile() && !ThisDecl->isFromASTFile()) {
-    assert(Writer.FirstLatestDecls.find(First) == Writer.FirstLatestDecls.end()
-           && "The latest is already set");
-    Writer.FirstLatestDecls[First] = ThisDecl;
+  if (!D->getPreviousDeclaration() ||
+      D->getPreviousDeclaration()->isFromASTFile()) {
+    Record.push_back(FirstInFile);
+    Writer.AddDeclRef(First, Record);
+
+    // Capture the set of redeclarations in this file.
+    LocalRedeclarationsInfo LocalInfo = {
+      Writer.GetDeclRef(First),
+      Writer.GetDeclRef(static_cast<T*>(D)),
+      Writer.GetDeclRef(D->getMostRecentDeclaration())
+    };
+    Writer.LocalRedeclarations.push_back(LocalInfo);    
+  } else {
+    Record.push_back(PointsToPrevious);
+    Writer.AddDeclRef(First, Record);
+    Writer.AddDeclRef(D->getPreviousDeclaration(), Record);
   }
 }
 
@@ -1365,7 +1394,8 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
   Abv = new BitCodeAbbrev();
   Abv->Add(BitCodeAbbrevOp(serialization::DECL_ENUM));
   // Redeclarable
-  Abv->Add(BitCodeAbbrevOp(0));                         // No redeclaration
+  Abv->Add(BitCodeAbbrevOp(0));                       // First in file
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // First ID
   // Decl
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // DeclContext
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // LexicalDeclContext
@@ -1412,7 +1442,8 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
   Abv = new BitCodeAbbrev();
   Abv->Add(BitCodeAbbrevOp(serialization::DECL_RECORD));
   // Redeclarable
-  Abv->Add(BitCodeAbbrevOp(0));                         // No redeclaration
+  Abv->Add(BitCodeAbbrevOp(0));                       // First in file
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // First ID
   // Decl
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // DeclContext
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // LexicalDeclContext
@@ -1453,7 +1484,8 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
   Abv = new BitCodeAbbrev();
   Abv->Add(BitCodeAbbrevOp(serialization::DECL_PARM_VAR));
   // Redeclarable
-  Abv->Add(BitCodeAbbrevOp(0));                       // No redeclaration
+  Abv->Add(BitCodeAbbrevOp(0));                       // First in file
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // First ID
   // Decl
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // DeclContext
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // LexicalDeclContext
@@ -1502,6 +1534,9 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
   // Abbreviation for DECL_TYPEDEF
   Abv = new BitCodeAbbrev();
   Abv->Add(BitCodeAbbrevOp(serialization::DECL_TYPEDEF));
+  // Redeclarable
+  Abv->Add(BitCodeAbbrevOp(0));                       // First in file
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // First ID
   // Decl
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // DeclContext
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // LexicalDeclContext
@@ -1529,7 +1564,8 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
   Abv = new BitCodeAbbrev();
   Abv->Add(BitCodeAbbrevOp(serialization::DECL_VAR));
   // Redeclarable
-  Abv->Add(BitCodeAbbrevOp(0));                       // No redeclaration
+  Abv->Add(BitCodeAbbrevOp(0));                       // First in file
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // First ID
   // Decl
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // DeclContext
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // LexicalDeclContext

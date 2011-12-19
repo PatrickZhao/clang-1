@@ -299,12 +299,7 @@ void CursorVisitor::visitDeclsFromFileRegion(FileID File,
 
     // We handle forward decls via ObjCClassDecl.
     if (ObjCInterfaceDecl *InterD = dyn_cast<ObjCInterfaceDecl>(D)) {
-      if (InterD->isForwardDecl())
-        continue;
-      // An interface that started as a forward decl may have changed location
-      // because its @interface was parsed.
-      if (InterD->isInitiallyForwardDecl() &&
-          !SM.isInFileID(SM.getFileLoc(InterD->getLocation()), File))
+      if (!InterD->isThisDeclarationADefinition())
         continue;
     }
 
@@ -1065,7 +1060,7 @@ bool CursorVisitor::VisitObjCForwardProtocolDecl(ObjCForwardProtocolDecl *D) {
 
 bool CursorVisitor::VisitObjCClassDecl(ObjCClassDecl *D) {
   if (Visit(MakeCursorObjCClassRef(D->getForwardInterfaceDecl(), 
-                                   D->getForwardDecl()->getLocation(), TU)))
+                                   D->getNameLoc(), TU)))
       return true;
   return false;
 }
@@ -2336,6 +2331,13 @@ RefNamePieces buildPieces(unsigned NameFlags, bool IsMemberRefExpr,
 static llvm::sys::Mutex EnableMultithreadingMutex;
 static bool EnabledMultithreading;
 
+static void fatal_error_handler(void *user_data, const std::string& reason) {
+  // Write the result out to stderr avoiding errs() because raw_ostreams can
+  // call report_fatal_error.
+  fprintf(stderr, "LIBCLANG FATAL ERROR: %s\n", reason.c_str());
+  ::abort();
+}
+
 extern "C" {
 CXIndex clang_createIndex(int excludeDeclarationsFromPCH,
                           int displayDiagnostics) {
@@ -2351,6 +2353,7 @@ CXIndex clang_createIndex(int excludeDeclarationsFromPCH,
   {
     llvm::sys::ScopedLock L(EnableMultithreadingMutex);
     if (!EnabledMultithreading) {
+      llvm::install_fatal_error_handler(fatal_error_handler, 0);
       llvm::llvm_start_multithreaded();
       EnabledMultithreading = true;
     }
@@ -3940,8 +3943,13 @@ CXCursor clang_getCursorReferenced(CXCursor C) {
     case CXCursor_ObjCProtocolRef: {
       return MakeCXCursor(getCursorObjCProtocolRef(C).first, tu);
 
-    case CXCursor_ObjCClassRef:
-      return MakeCXCursor(getCursorObjCClassRef(C).first, tu );
+    case CXCursor_ObjCClassRef: {
+      ObjCInterfaceDecl *Class = getCursorObjCClassRef(C).first;
+      if (ObjCInterfaceDecl *Def = Class->getDefinition())
+        return MakeCXCursor(Def, tu);
+
+      return MakeCXCursor(Class, tu);
+    }
 
     case CXCursor_TypeRef:
       return MakeCXCursor(getCursorTypeRef(C).first, tu );
@@ -4139,8 +4147,8 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
     // the definition; when we were provided with the interface,
     // produce the @implementation as the definition.
     if (WasReference) {
-      if (!cast<ObjCInterfaceDecl>(D)->isForwardDecl())
-        return C;
+      if (ObjCInterfaceDecl *Def = cast<ObjCInterfaceDecl>(D)->getDefinition())
+        return MakeCXCursor(Def, TU);
     } else if (ObjCImplementationDecl *Impl
                               = cast<ObjCInterfaceDecl>(D)->getImplementation())
       return MakeCXCursor(Impl, TU);
@@ -4154,8 +4162,8 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::ObjCCompatibleAlias:
     if (ObjCInterfaceDecl *Class
           = cast<ObjCCompatibleAliasDecl>(D)->getClassInterface())
-      if (!Class->isForwardDecl())
-        return MakeCXCursor(Class, TU);
+      if (ObjCInterfaceDecl *Def = Class->getDefinition())
+        return MakeCXCursor(Def, TU);
 
     return clang_getNullCursor();
 

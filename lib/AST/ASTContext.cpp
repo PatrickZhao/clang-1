@@ -852,7 +852,9 @@ ASTContext::getTypeInfo(const Type *T) const {
     const ConstantArrayType *CAT = cast<ConstantArrayType>(T);
 
     std::pair<uint64_t, unsigned> EltInfo = getTypeInfo(CAT->getElementType());
-    Width = EltInfo.first*CAT->getSize().getZExtValue();
+    uint64_t Size = CAT->getSize().getZExtValue();
+    assert((Size == 0 || EltInfo.first <= (uint64_t)(-1)/Size) && "Overflow in array type bit size evaluation");
+    Width = EltInfo.first*Size;
     Align = EltInfo.second;
     Width = llvm::RoundUpToAlignment(Width, Align);
     break;
@@ -2806,11 +2808,21 @@ QualType ASTContext::getObjCObjectPointerType(QualType ObjectT) const {
 
 /// getObjCInterfaceType - Return the unique reference to the type for the
 /// specified ObjC interface decl. The list of protocols is optional.
-QualType ASTContext::getObjCInterfaceType(const ObjCInterfaceDecl *Decl) const {
+QualType ASTContext::getObjCInterfaceType(const ObjCInterfaceDecl *Decl,
+                                          ObjCInterfaceDecl *PrevDecl) const {
   if (Decl->TypeForDecl)
     return QualType(Decl->TypeForDecl, 0);
 
-  // FIXME: redeclarations?
+  if (PrevDecl) {
+    assert(PrevDecl->TypeForDecl && "previous decl has no TypeForDecl");
+    Decl->TypeForDecl = PrevDecl->TypeForDecl;
+    return QualType(PrevDecl->TypeForDecl, 0);
+  }
+
+  // Prefer the definition, if there is one.
+  if (const ObjCInterfaceDecl *Def = Decl->getDefinition())
+    Decl = Def;
+  
   void *Mem = Allocate(sizeof(ObjCInterfaceType), TypeAlignment);
   ObjCInterfaceType *T = new (Mem) ObjCInterfaceType(Decl);
   Decl->TypeForDecl = T;
@@ -5467,7 +5479,7 @@ QualType ASTContext::areCommonBaseCompatible(
   const ObjCObjectType *RHS = Rptr->getObjectType();
   const ObjCInterfaceDecl* LDecl = LHS->getInterface();
   const ObjCInterfaceDecl* RDecl = RHS->getInterface();
-  if (!LDecl || !RDecl || (LDecl == RDecl))
+  if (!LDecl || !RDecl || (declaresSameEntity(LDecl, RDecl)))
     return QualType();
   
   do {

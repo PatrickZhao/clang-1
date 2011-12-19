@@ -1580,6 +1580,10 @@ static void printCXIndexLoc(CXIdxLoc loc) {
     printf("<null loc>");
     return;
   }
+  if (!file) {
+    printf("<no idxfile>");
+    return;
+  }
   filename = clang_getFileName((CXFile)file);
   cname = clang_getCString(filename);
   end = cname + strlen(cname);
@@ -1680,6 +1684,7 @@ static void printEntityInfo(const char *cb,
                             const CXIdxEntityInfo *info) {
   const char *name;
   IndexData *index_data;
+  unsigned i;
   index_data = (IndexData *)client_data;
   printCheck(index_data);
 
@@ -1694,9 +1699,15 @@ static void printEntityInfo(const char *cb,
 
   printf("%s: kind: %s%s", cb, getEntityKindString(info->kind),
          getEntityTemplateKindString(info->templateKind));
-  printf(" | lang: %s", getEntityLanguageString(info->lang));
   printf(" | name: %s", name);
   printf(" | USR: %s", info->USR);
+  printf(" | lang: %s", getEntityLanguageString(info->lang));
+
+  for (i = 0; i != info->numAttributes; ++i) {
+    const CXIdxAttrInfo *Attr = info->attributes[i];
+    printf("     <attribute>: ");
+    PrintCursor(Attr->cursor);
+  }
 }
 
 static void printBaseClassInfo(CXClientData client_data,

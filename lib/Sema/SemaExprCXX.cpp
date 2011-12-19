@@ -28,6 +28,7 @@
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
+#include "TypeLocBuilder.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 using namespace clang;
@@ -266,7 +267,7 @@ ParsedType Sema::getDestructorName(SourceLocation TildeLoc,
 }
 
 ParsedType Sema::getDestructorType(const DeclSpec& DS, ParsedType ObjectType) {
-    if (DS.getTypeSpecType() == DeclSpec::TST_error)
+    if (DS.getTypeSpecType() == DeclSpec::TST_error || !ObjectType)
       return ParsedType();
     assert(DS.getTypeSpecType() == DeclSpec::TST_decltype 
            && "only get destructor types from declspecs");
@@ -4313,6 +4314,30 @@ ExprResult Sema::DiagnoseDtorReference(SourceLocation NameLoc,
                        /*RPLoc*/ ExpectedLParenLoc);
 }
 
+static bool CheckArrow(Sema& S, QualType& ObjectType, Expr *Base, 
+                   tok::TokenKind& OpKind, SourceLocation OpLoc) {
+  // C++ [expr.pseudo]p2:
+  //   The left-hand side of the dot operator shall be of scalar type. The
+  //   left-hand side of the arrow operator shall be of pointer to scalar type.
+  //   This scalar type is the object type.
+  if (OpKind == tok::arrow) {
+    if (const PointerType *Ptr = ObjectType->getAs<PointerType>()) {
+      ObjectType = Ptr->getPointeeType();
+    } else if (!Base->isTypeDependent()) {
+      // The user wrote "p->" when she probably meant "p."; fix it.
+      S.Diag(OpLoc, diag::err_typecheck_member_reference_suggestion)
+        << ObjectType << true
+        << FixItHint::CreateReplacement(OpLoc, ".");
+      if (S.isSFINAEContext())
+        return true;
+
+      OpKind = tok::period;
+    }
+  }
+
+  return false;
+}
+
 ExprResult Sema::BuildPseudoDestructorExpr(Expr *Base,
                                            SourceLocation OpLoc,
                                            tok::TokenKind OpKind,
@@ -4324,25 +4349,9 @@ ExprResult Sema::BuildPseudoDestructorExpr(Expr *Base,
                                            bool HasTrailingLParen) {
   TypeSourceInfo *DestructedTypeInfo = Destructed.getTypeSourceInfo();
 
-  // C++ [expr.pseudo]p2:
-  //   The left-hand side of the dot operator shall be of scalar type. The
-  //   left-hand side of the arrow operator shall be of pointer to scalar type.
-  //   This scalar type is the object type.
   QualType ObjectType = Base->getType();
-  if (OpKind == tok::arrow) {
-    if (const PointerType *Ptr = ObjectType->getAs<PointerType>()) {
-      ObjectType = Ptr->getPointeeType();
-    } else if (!Base->isTypeDependent()) {
-      // The user wrote "p->" when she probably meant "p."; fix it.
-      Diag(OpLoc, diag::err_typecheck_member_reference_suggestion)
-        << ObjectType << true
-        << FixItHint::CreateReplacement(OpLoc, ".");
-      if (isSFINAEContext())
-        return ExprError();
-
-      OpKind = tok::period;
-    }
-  }
+  if (CheckArrow(*this, ObjectType, Base, OpKind, OpLoc))
+    return ExprError();
 
   if (!ObjectType->isDependentType() && !ObjectType->isScalarType()) {
     Diag(OpLoc, diag::err_pseudo_dtor_base_not_scalar)
@@ -4442,25 +4451,9 @@ ExprResult Sema::ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
           SecondTypeName.getKind() == UnqualifiedId::IK_Identifier) &&
          "Invalid second type name in pseudo-destructor");
 
-  // C++ [expr.pseudo]p2:
-  //   The left-hand side of the dot operator shall be of scalar type. The
-  //   left-hand side of the arrow operator shall be of pointer to scalar type.
-  //   This scalar type is the object type.
   QualType ObjectType = Base->getType();
-  if (OpKind == tok::arrow) {
-    if (const PointerType *Ptr = ObjectType->getAs<PointerType>()) {
-      ObjectType = Ptr->getPointeeType();
-    } else if (!ObjectType->isDependentType()) {
-      // The user wrote "p->" when she probably meant "p."; fix it.
-      Diag(OpLoc, diag::err_typecheck_member_reference_suggestion)
-        << ObjectType << true
-        << FixItHint::CreateReplacement(OpLoc, ".");
-      if (isSFINAEContext())
-        return ExprError();
-
-      OpKind = tok::period;
-    }
-  }
+  if (CheckArrow(*this, ObjectType, Base, OpKind, OpLoc))
+    return ExprError();
 
   // Compute the object type that we should use for name lookup purposes. Only
   // record types and dependent types matter.
@@ -4580,6 +4573,30 @@ ExprResult Sema::ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
                                    Destructed, HasTrailingLParen);
 }
 
+ExprResult Sema::ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
+                                           SourceLocation OpLoc,
+                                           tok::TokenKind OpKind,
+                                           SourceLocation TildeLoc, 
+                                           const DeclSpec& DS,
+                                           bool HasTrailingLParen) {
+  
+  QualType ObjectType = Base->getType();
+  if (CheckArrow(*this, ObjectType, Base, OpKind, OpLoc))
+    return ExprError();
+
+  QualType T = BuildDecltypeType(DS.getRepAsExpr(), DS.getTypeSpecTypeLoc());
+
+  TypeLocBuilder TLB;
+  DecltypeTypeLoc DecltypeTL = TLB.push<DecltypeTypeLoc>(T);
+  DecltypeTL.setNameLoc(DS.getTypeSpecTypeLoc());
+  TypeSourceInfo *DestructedTypeInfo = TLB.getTypeSourceInfo(Context, T);
+  PseudoDestructorTypeStorage Destructed(DestructedTypeInfo);
+
+  return BuildPseudoDestructorExpr(Base, OpLoc, OpKind, CXXScopeSpec(),
+                                   0, SourceLocation(), TildeLoc,
+                                   Destructed, HasTrailingLParen);
+}
+
 ExprResult Sema::BuildCXXMemberCallExpr(Expr *E, NamedDecl *FoundDecl,
                                         CXXMethodDecl *Method,
                                         bool HadMultipleCandidates) {
@@ -4674,6 +4691,15 @@ ExprResult Sema::ActOnFinishFullExpr(Expr *FE) {
   if (DiagnoseUnexpandedParameterPack(FullExpr.get()))
     return ExprError();
 
+  // Top-level message sends default to 'id' when we're in a debugger.
+  if (getLangOptions().DebuggerSupport &&
+      FullExpr.get()->getType() == Context.UnknownAnyTy &&
+      isa<ObjCMessageExpr>(FullExpr.get())) {
+    FullExpr = forceUnknownAnyToType(FullExpr.take(), Context.getObjCIdType());
+    if (FullExpr.isInvalid())
+      return ExprError();
+  }
+  
   FullExpr = CheckPlaceholderExpr(FullExpr.take());
   if (FullExpr.isInvalid())
     return ExprError();

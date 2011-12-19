@@ -485,10 +485,12 @@ def warn_strict_multiple_method_decl : Warning<
   "multiple methods named %0 found">, InGroup<StrictSelector>, DefaultIgnore;
 def warn_accessor_property_type_mismatch : Warning<
   "type of property %0 does not match type of accessor %1">;
-def note_declared_at : Note<"declared here">;
 def note_method_declared_at : Note<"method declared here">;
 def err_setter_type_void : Error<"type of setter must be void">;
 def err_duplicate_method_decl : Error<"duplicate declaration of method %0">;
+def warn_duplicate_method_decl : 
+  Warning<"multiple declarations of method %0 found and ignored">, 
+  InGroup<MethodDuplicate>;
 def err_objc_var_decl_inclass : 
     Error<"cannot declare variable inside @interface or @protocol">;
 def error_missing_method_context : Error<
@@ -526,6 +528,10 @@ def warn_owning_getter_rule : Warning<
   "property's synthesized getter follows Cocoa naming"
   " convention for returning 'owned' objects">,
   InGroup<DiagGroup<"objc-property-matches-cocoa-ownership-rule">>;
+def warn_auto_synthesizing_protocol_property :Warning<
+  "auto property synthesis will not synthesize property"
+  " declared in a protocol">,
+  InGroup<DiagGroup<"objc-protocol-property-synthesis">>;
 def warn_property_getter_owning_mismatch : Warning<
   "property declared as returning non-retained objects"
   "; getter returning retained objects">;
@@ -1021,7 +1027,7 @@ def err_init_conversion_failed : Error<
   "%select{rvalue|lvalue}2 of type %3"
   "%select{|: different classes (%5 vs %6)"
   "|: different number of parameters (%5 vs %6)"
-  "|: type mismatch in %ordinal5 parameter (%6 vs %7)"
+  "|: type mismatch at %ordinal5 parameter (%6 vs %7)"
   "|: different return type (%5 vs %6)"
   "|: different qualifiers ("
   "%select{none|const|restrict|const and restrict|volatile|const and volatile|"
@@ -1145,6 +1151,8 @@ def err_cannot_determine_declared_type_of_overloaded_function : Error<
 def warn_cxx98_compat_decltype : Warning<
   "'decltype' type specifier is incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
+def err_decltype_in_declarator : Error<
+    "'decltype' cannot be used to name a declaration">;
     
 // C++11 auto
 def warn_cxx98_compat_auto_type_specifier : Warning<
@@ -1457,6 +1465,8 @@ def warn_redeclaration_without_attribute_prev_attribute_ignored : Warning<
 def warn_attribute_ignored : Warning<"%0 attribute ignored">;
 def warn_unknown_attribute_ignored : Warning<
   "unknown attribute %0 ignored">, InGroup<UnknownAttributes>;
+def warn_declspec_attribute_ignored : Warning<
+  "attribute %0 is ignored, place it after \"%select{class|struct|union|enum}1\" to apply attribute to type declaration">, InGroup<IgnoredAttributes>;
 def warn_attribute_precede_definition : Warning<
   "attribute declaration must precede definition">;
 def warn_attribute_void_function_method : Warning<
@@ -1851,7 +1861,7 @@ def note_ovl_candidate : Note<"candidate "
     "is an inherited constructor}0%1"
     "%select{| has different class (expected %3 but has %4)"
     "| has different number of parameters (expected %3 but has %4)"
-    "| has type mismatch in %ordinal3 parameter (expected %4 but has %5)"
+    "| has type mismatch at %ordinal3 parameter (expected %4 but has %5)"
     "| has different return type (%3 expected but has %4)"
     "| has different qualifiers (expected "
     "%select{none|const|restrict|const and restrict|volatile|const and volatile"
@@ -3058,7 +3068,7 @@ def ext_flexible_array_empty_aggregate_gnu : Extension<
 def ext_flexible_array_union_gnu : Extension<
   "flexible array member %0 in a union is a GNU extension">, InGroup<GNU>;
 
-let CategoryName = "ARC Issue" in {
+let CategoryName = "ARC Semantic Issue" in {
 
 // ARC-mode diagnostics.
 
@@ -3094,7 +3104,7 @@ def err_arc_mismatched_cast : Error<
 def err_arc_nolifetime_behavior : Error<
   "explicit ownership qualifier on cast result has no effect">;
 def err_arc_objc_object_in_struct : Error<
-  "ARC forbids Objective-C objects in structs or unions">;
+  "ARC forbids %select{Objective-C objects|blocks}0 in structs or unions">;
 def err_arc_objc_property_default_assign_on_object : Error<
   "ARC forbids synthesizing a property of an Objective-C object "
   "with unspecified ownership or storage attribute">;

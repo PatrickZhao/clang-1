@@ -1975,7 +1975,7 @@ Sema::LookupInObjCMethod(LookupResult &Lookup, Scope *S,
 
       // Diagnose the use of an ivar outside of the declaring class.
       if (IV->getAccessControl() == ObjCIvarDecl::Private &&
-          ClassDeclared != IFace)
+          !declaresSameEntity(ClassDeclared, IFace))
         Diag(Loc, diag::error_private_ivar_access) << IV->getDeclName();
 
       // FIXME: This should use a new expr for a direct reference, don't
@@ -2005,7 +2005,7 @@ Sema::LookupInObjCMethod(LookupResult &Lookup, Scope *S,
       ObjCInterfaceDecl *ClassDeclared;
       if (ObjCIvarDecl *IV = IFace->lookupInstanceVariable(II, ClassDeclared)) {
         if (IV->getAccessControl() != ObjCIvarDecl::Private ||
-            IFace == ClassDeclared)
+            declaresSameEntity(IFace, ClassDeclared))
           Diag(Loc, diag::warn_ivar_use_hidden) << IV->getDeclName();
       }
     }
@@ -6203,11 +6203,9 @@ QualType Sema::CheckSubtractionOperands(ExprResult &LHS, ExprResult &RHS,
       if (!checkArithmeticOpPointerOperand(*this, Loc, LHS.get()))
         return QualType();
 
-      Expr *IExpr = RHS.get()->IgnoreParenCasts();
-      UnaryOperator negRex(IExpr, UO_Minus, IExpr->getType(), VK_RValue,
-                           OK_Ordinary, IExpr->getExprLoc());
       // Check array bounds for pointer arithemtic
-      CheckArrayAccess(LHS.get()->IgnoreParenCasts(), &negRex);
+      CheckArrayAccess(LHS.get(), RHS.get(), /*ArraySubscriptExpr*/0,
+                       /*AllowOnePastEnd*/true, /*IndexNegated*/true);
 
       if (CompLHSTy) *CompLHSTy = LHS.get()->getType();
       return LHS.get()->getType();
@@ -8257,6 +8255,48 @@ ExprResult Sema::CreateBuiltinUnaryOp(SourceLocation OpLoc,
                                            VK, OK, OpLoc));
 }
 
+/// \brief Determine whether the given expression is a qualified member
+/// access expression, of a form that could be turned into a pointer to member
+/// with the address-of operator.
+static bool isQualifiedMemberAccess(Expr *E) {
+  if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E)) {
+    if (!DRE->getQualifier())
+      return false;
+    
+    ValueDecl *VD = DRE->getDecl();
+    if (!VD->isCXXClassMember())
+      return false;
+    
+    if (isa<FieldDecl>(VD) || isa<IndirectFieldDecl>(VD))
+      return true;
+    if (CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(VD))
+      return Method->isInstance();
+      
+    return false;
+  }
+  
+  if (UnresolvedLookupExpr *ULE = dyn_cast<UnresolvedLookupExpr>(E)) {
+    if (!ULE->getQualifier())
+      return false;
+    
+    for (UnresolvedLookupExpr::decls_iterator D = ULE->decls_begin(),
+                                           DEnd = ULE->decls_end();
+         D != DEnd; ++D) {
+      if (CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(*D)) {
+        if (Method->isInstance())
+          return true;
+      } else {
+        // Overload set does not contain methods.
+        break;
+      }
+    }
+    
+    return false;
+  }
+  
+  return false;
+}
+
 ExprResult Sema::BuildUnaryOp(Scope *S, SourceLocation OpLoc,
                               UnaryOperatorKind Opc, Expr *Input) {
   // First things first: handle placeholders so that the
@@ -8286,7 +8326,8 @@ ExprResult Sema::BuildUnaryOp(Scope *S, SourceLocation OpLoc,
   }
 
   if (getLangOptions().CPlusPlus && Input->getType()->isOverloadableType() &&
-      UnaryOperator::getOverloadedOperator(Opc) != OO_None) {
+      UnaryOperator::getOverloadedOperator(Opc) != OO_None &&
+      !(Opc == UO_AddrOf && isQualifiedMemberAccess(Input))) {
     // Find all of the overloaded operators visible from this
     // point. We perform both an operator-name lookup from the local
     // scope and an argument-dependent lookup based on the types of
@@ -9189,38 +9230,60 @@ bool Sema::DiagnoseAssignmentResult(AssignConvertType ConvTy,
   return isInvalid;
 }
 
-bool Sema::VerifyIntegerConstantExpression(const Expr *E, llvm::APSInt *Result){
-  llvm::APSInt ICEResult;
-  if (E->isIntegerConstantExpr(ICEResult, Context)) {
-    if (Result)
-      *Result = ICEResult;
-    return false;
+bool Sema::VerifyIntegerConstantExpression(const Expr *E, llvm::APSInt *Result,
+                                           unsigned DiagID, bool AllowFold) {
+  // Circumvent ICE checking in C++11 to avoid evaluating the expression twice
+  // in the non-ICE case.
+  if (!getLangOptions().CPlusPlus0x) {
+    if (E->isIntegerConstantExpr(Context)) {
+      if (Result)
+        *Result = E->EvaluateKnownConstInt(Context);
+      return false;
+    }
   }
 
   Expr::EvalResult EvalResult;
+  llvm::SmallVector<PartialDiagnosticAt, 8> Notes;
+  EvalResult.Diag = &Notes;
 
-  if (!E->EvaluateAsRValue(EvalResult, Context) || !EvalResult.Val.isInt() ||
-      EvalResult.HasSideEffects) {
-    Diag(E->getExprLoc(), diag::err_expr_not_ice) << E->getSourceRange();
+  // Try to evaluate the expression, and produce diagnostics explaining why it's
+  // not a constant expression as a side-effect.
+  bool Folded = E->EvaluateAsRValue(EvalResult, Context) &&
+                EvalResult.Val.isInt() && !EvalResult.HasSideEffects;
 
-    if (EvalResult.Diag) {
-      // We only show the note if it's not the usual "invalid subexpression"
-      // or if it's actually in a subexpression.
-      if (EvalResult.Diag != diag::note_invalid_subexpr_in_const_expr ||
-          E->IgnoreParens() != EvalResult.DiagExpr->IgnoreParens())
-        Diag(EvalResult.DiagLoc, EvalResult.Diag);
+  // In C++11, we can rely on diagnostics being produced for any expression
+  // which is not a constant expression. If no diagnostics were produced, then
+  // this is a constant expression.
+  if (Folded && getLangOptions().CPlusPlus0x && Notes.empty()) {
+    if (Result)
+      *Result = EvalResult.Val.getInt();
+    return false;
+  }
+
+  if (!Folded || !AllowFold) {
+    Diag(E->getSourceRange().getBegin(),
+         DiagID ? DiagID : unsigned(diag::err_expr_not_ice))
+      << E->getSourceRange();
+
+    // We only show the notes if they're not the usual "invalid subexpression"
+    // or if they are actually in a subexpression.
+    if (Notes.size() != 1 ||
+        Notes[0].second.getDiagID() != diag::note_invalid_subexpr_in_const_expr
+        || Notes[0].first != E->IgnoreParens()->getExprLoc()) {
+      for (unsigned I = 0, N = Notes.size(); I != N; ++I)
+        Diag(Notes[I].first, Notes[I].second);
     }
 
     return true;
   }
 
-  Diag(E->getExprLoc(), diag::ext_expr_not_ice) <<
-    E->getSourceRange();
+  Diag(E->getSourceRange().getBegin(), diag::ext_expr_not_ice)
+    << E->getSourceRange();
 
-  if (EvalResult.Diag &&
-      Diags.getDiagnosticLevel(diag::ext_expr_not_ice, EvalResult.DiagLoc)
+  if (Diags.getDiagnosticLevel(diag::ext_expr_not_ice, E->getExprLoc())
           != DiagnosticsEngine::Ignored)
-    Diag(EvalResult.DiagLoc, EvalResult.Diag);
+    for (unsigned I = 0, N = Notes.size(); I != N; ++I)
+      Diag(Notes[I].first, Notes[I].second);
 
   if (Result)
     *Result = EvalResult.Val.getInt();

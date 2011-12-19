@@ -798,7 +798,8 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(KNOWN_NAMESPACES);
   RECORD(MODULE_OFFSET_MAP);
   RECORD(SOURCE_MANAGER_LINE_TABLE);
-  
+  RECORD(LOCAL_REDECLARATIONS);
+         
   // SourceManager Block.
   BLOCK(SOURCE_MANAGER_BLOCK);
   RECORD(SM_SLOC_FILE_ENTRY);
@@ -1970,7 +1971,7 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
     if (!Mod->Imports.empty()) {
       Record.clear();
       for (unsigned I = 0, N = Mod->Imports.size(); I != N; ++I) {
-        unsigned ImportedID = SubmoduleIDs[Mod->Imports[I]];
+        unsigned ImportedID = getSubmoduleID(Mod->Imports[I]);
         assert(ImportedID && "Unknown submodule!");                                           
         Record.push_back(ImportedID);
       }
@@ -1981,10 +1982,14 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
     if (!Mod->Exports.empty()) {
       Record.clear();
       for (unsigned I = 0, N = Mod->Exports.size(); I != N; ++I) {
-        unsigned ExportedID = SubmoduleIDs[Mod->Exports[I].getPointer()];
-        assert((ExportedID || !Mod->Exports[I].getPointer()) &&
-               "Unknown submodule!");                                           
-        Record.push_back(ExportedID);
+        if (Module *Exported = Mod->Exports[I].getPointer()) {
+          unsigned ExportedID = SubmoduleIDs[Exported];
+          assert(ExportedID > 0 && "Unknown submodule ID?");
+          Record.push_back(ExportedID);
+        } else {
+          Record.push_back(0);
+        }
+        
         Record.push_back(Mod->Exports[I].getInt());
       }
       Stream.EmitRecord(SUBMODULE_EXPORTS, Record);
@@ -3407,6 +3412,25 @@ void ASTWriter::WriteASTCore(Sema &SemaRef, MemorizeStatCalls *StatCalls,
   WriteDeclReplacementsBlock();
   WriteChainedObjCCategories();
 
+  if (!LocalRedeclarations.empty()) {
+    // Sort the local redeclarations info by the first declaration ID,
+    // since the reader will be perforing binary searches on this information.
+    llvm::array_pod_sort(LocalRedeclarations.begin(),LocalRedeclarations.end());
+    
+    llvm::BitCodeAbbrev *Abbrev = new BitCodeAbbrev();
+    Abbrev->Add(BitCodeAbbrevOp(LOCAL_REDECLARATIONS));
+    Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // # of entries
+    Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob));
+    unsigned AbbrevID = Stream.EmitAbbrev(Abbrev);
+
+    Record.clear();
+    Record.push_back(LOCAL_REDECLARATIONS);
+    Record.push_back(LocalRedeclarations.size());
+    Stream.EmitRecordWithBlob(AbbrevID, Record, 
+      reinterpret_cast<char*>(LocalRedeclarations.data()),
+      LocalRedeclarations.size() * sizeof(LocalRedeclarationsInfo));
+  }
+  
   // Some simple statistics
   Record.clear();
   Record.push_back(NumStatements);
@@ -3435,6 +3459,7 @@ void ASTWriter::ResolveDeclUpdatesBlocks() {
       case UPD_CXX_ADDED_IMPLICIT_MEMBER:
       case UPD_CXX_ADDED_TEMPLATE_SPECIALIZATION:
       case UPD_CXX_ADDED_ANONYMOUS_NAMESPACE:
+      case UPD_OBJC_SET_CLASS_DEFINITIONDATA:
         URec[Idx] = GetDeclRef(reinterpret_cast<Decl *>(URec[Idx]));
         ++Idx;
         break;
@@ -4375,10 +4400,26 @@ void ASTWriter::AddedObjCCategoryToInterface(const ObjCCategoryDecl *CatD,
 
 void ASTWriter::CompletedObjCForwardRef(const ObjCContainerDecl *D) {
   assert(!WritingAST && "Already writing the AST!");
-  if (!D->isFromASTFile())
-    return; // Declaration not imported from PCH.
+  if (D->isFromASTFile())
+    RewriteDecl(D);
 
-  RewriteDecl(D);
+  if (const ObjCInterfaceDecl *ID = dyn_cast<ObjCInterfaceDecl>(D)) {
+    for (ObjCInterfaceDecl::redecl_iterator I = ID->redecls_begin(), 
+                                            E = ID->redecls_end(); 
+         I != E; ++I) {
+      if (*I == ID)
+        continue;
+      
+      // We are interested when a PCH decl is modified.
+      if (I->isFromASTFile()) {
+        UpdateRecord &Record = DeclUpdates[*I];
+        Record.push_back(UPD_OBJC_SET_CLASS_DEFINITIONDATA);
+        assert((*I)->hasDefinition());
+        assert((*I)->getDefinition() == D);
+        Record.push_back(reinterpret_cast<uint64_t>(D)); // the DefinitionDecl
+      }
+    }
+  }
 }
 
 void ASTWriter::AddedObjCPropertyInClassExtension(const ObjCPropertyDecl *Prop,

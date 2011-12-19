@@ -136,7 +136,23 @@ protected:
   /// @}
 };
 
-/// Darwin - The base Darwin tool chain.
+class LLVM_LIBRARY_VISIBILITY Hexagon_TC : public ToolChain {
+protected:
+  mutable llvm::DenseMap<unsigned, Tool*> Tools;
+
+public:
+  Hexagon_TC(const HostInfo &Host, const llvm::Triple& Triple);
+  ~Hexagon_TC();
+
+  virtual Tool &SelectTool(const Compilation &C, const JobAction &JA,
+                           const ActionList &Inputs) const;
+
+  virtual bool IsUnwindTablesDefault() const;
+  virtual const char *GetDefaultRelocationModel() const;
+  virtual const char *GetForcedPicModel() const;
+};
+
+  /// Darwin - The base Darwin tool chain.
 class LLVM_LIBRARY_VISIBILITY Darwin : public ToolChain {
 public:
   /// The host version.
@@ -343,7 +359,7 @@ public:
   virtual unsigned GetDefaultStackProtectorLevel(bool KernelOrKext) const {
     // Stack protectors default to on for user code on 10.5,
     // and for everything in 10.6 and beyond
-    return !isTargetIPhoneOS() &&
+    return isTargetIPhoneOS() ||
       (!isMacosxVersionLT(10, 6) ||
          (!isMacosxVersionLT(10, 5) && !KernelOrKext));
   }
@@ -485,6 +501,11 @@ public:
 
   std::string Linker;
   std::vector<std::string> ExtraOpts;
+
+private:
+  static bool addLibStdCXXIncludePaths(Twine Base, Twine TargetArchDir,
+                                       const ArgList &DriverArgs,
+                                       ArgStringList &CC1Args);
 };
 
 

@@ -2177,6 +2177,12 @@ enum {
 /// parameter types, and different return types.
 void Sema::HandleFunctionTypeMismatch(PartialDiagnostic &PDiag,
                                       QualType FromType, QualType ToType) {
+  // If either type is not valid, include no extra info.
+  if (FromType.isNull() || ToType.isNull()) {
+    PDiag << ft_default;
+    return;
+  }
+
   // Get the function type from the pointers.
   if (FromType->isMemberPointerType() && ToType->isMemberPointerType()) {
     const MemberPointerType *FromMember = FromType->getAs<MemberPointerType>(),
@@ -2188,27 +2194,26 @@ void Sema::HandleFunctionTypeMismatch(PartialDiagnostic &PDiag,
     }
     FromType = FromMember->getPointeeType();
     ToType = ToMember->getPointeeType();
-  } else if (FromType->isPointerType() && ToType->isPointerType()) {
-    FromType = FromType->getPointeeType();
-    ToType = ToType->getPointeeType();
-  } else {
-    PDiag << ft_default;
-    return;
   }
 
+  if (FromType->isPointerType())
+    FromType = FromType->getPointeeType();
+  if (ToType->isPointerType())
+    ToType = ToType->getPointeeType();
+
+  // Remove references.
   FromType = FromType.getNonReferenceType();
   ToType = ToType.getNonReferenceType();
-
-  // If either type is not valid, of the types are the same, no extra info.
-  if (FromType.isNull() || ToType.isNull() ||
-      Context.hasSameType(FromType, ToType)) {
-    PDiag << ft_default;
-    return;
-  }
 
   // Don't print extra info for non-specialized template functions.
   if (FromType->isInstantiationDependentType() &&
       !FromType->getAs<TemplateSpecializationType>()) {
+    PDiag << ft_default;
+    return;
+  }
+
+  // No extra info for same types.
+  if (Context.hasSameType(FromType, ToType)) {
     PDiag << ft_default;
     return;
   }
@@ -2257,7 +2262,7 @@ void Sema::HandleFunctionTypeMismatch(PartialDiagnostic &PDiag,
 }
 
 /// FunctionArgTypesAreEqual - This routine checks two function proto types
-/// for equlity of their argument types. Caller has already checked that
+/// for equality of their argument types. Caller has already checked that
 /// they have same number of arguments. This routine assumes that Objective-C
 /// pointer types which only differ in their protocol qualifiers are equal.
 /// If the parameters are different, ArgPos will have the the parameter index
@@ -2295,7 +2300,9 @@ bool Sema::FunctionArgTypesAreEqual(const FunctionProtoType *OldType,
                  ToType->getAs<ObjCObjectPointerType>()) {
         if (const ObjCObjectPointerType *PTFr =
               FromType->getAs<ObjCObjectPointerType>())
-          if (PTTo->getInterfaceDecl() == PTFr->getInterfaceDecl())
+          if (Context.hasSameUnqualifiedType(
+                PTTo->getObjectType()->getBaseType(),
+                PTFr->getObjectType()->getBaseType()))
             continue;
       }
       if (ArgPos) *ArgPos = O - OldType->arg_type_begin();
