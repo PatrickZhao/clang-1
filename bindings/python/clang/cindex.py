@@ -364,6 +364,46 @@ class FixIt(object):
     def __repr__(self):
         return "<FixIt range %r, value %r>" % (self.range, self.value)
 
+### CXX Access Specifiers ###
+
+class CXXAccessSpecifier(object):
+    """Describes the C++ access level of a cursor.
+
+    These expose whether a cursor is public, protected, or private. If a cursor
+    doesn't have an access level, its access level is defined as invalid.
+    """
+
+    _levels = {}
+
+    __slots__ = ('value', 'label')
+
+    def __init__(self, value, label):
+        if value in self._levels:
+            raise ValueError(value)
+
+        self.value = value
+        self.label = label
+        CXXAccessSpecifier._levels[value] = self
+
+    @staticmethod
+    def from_id(id):
+        result = CXXAccessSpecifier._levels.get(id, None)
+        if result is None:
+            raise ValueError(id)
+
+        return result
+
+    def __repr__(self):
+        return 'CXXAccessSpecifier.%s' % (self.label,)
+
+    def __str__(self):
+        return self.label
+
+CXXAccessSpecifier.INVALID = CXXAccessSpecifier(0, 'INVALID')
+CXXAccessSpecifier.PUBLIC = CXXAccessSpecifier(1, 'public')
+CXXAccessSpecifier.PROTECTED = CXXAccessSpecifier(2, 'protected')
+CXXAccessSpecifier.PRIVATE = CXXAccessSpecifier(3, 'private')
+
 ### Cursor Kinds ###
 
 class CursorKind(object):
@@ -1177,6 +1217,16 @@ class Cursor(Structure):
             self._objc_type_encoding = Cursor_objc_type_encoding(self)
 
         return self._objc_type_encoding
+
+    @property
+    def access_specifier(self):
+        """Returns the access control level for a base or access specifier
+        cursor.
+        """
+        if not hasattr(self, '_access_specifier'):
+            self._access_specifier = CXXAccessSpecifier.from_id(
+                Cursor_access_specifier(self))
+        return self._access_specifier
 
     @property
     def overloaded_declaration_count(self):
@@ -2442,6 +2492,10 @@ Cursor_objc_type_encoding.argtypes = [Cursor]
 Cursor_objc_type_encoding.restype = _CXString
 Cursor_objc_type_encoding.errcheck = _CXString.from_result
 
+Cursor_access_specifier = lib.clang_getCXXAccessSpecifier
+Cursor_access_specifier.argtypes = [Cursor]
+Cursor_access_specifier.restype = c_uint
+
 Cursor_get_num_overloaded_decl = lib.clang_getNumOverloadedDecls
 Cursor_get_num_overloaded_decl.argtypes = [Cursor]
 Cursor_get_num_overloaded_decl.restype = c_uint
@@ -2664,6 +2718,7 @@ __all__ = [
     'CodeCompletionResults',
     'CursorKind',
     'Cursor',
+    'CXXAccessSpecifier',
     'Diagnostic',
     'File',
     'FixIt',
