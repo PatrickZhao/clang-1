@@ -60,7 +60,10 @@ call is efficient.
 # o cleanup ctypes wrapping, would be nice to separate the ctypes details more
 #   clearly, and hide from the external interface (i.e., help(cindex)).
 #
-# o implement additional SourceLocation, SourceRange, and File methods.
+# o implement additional SourceLocation and SourceRange methods.
+#
+# o implement clang_getExpansionLocation, clang_getPresumedLocation, and
+#   clang_getSpellingLocation.
 
 from ctypes import *
 import collections
