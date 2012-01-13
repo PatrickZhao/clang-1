@@ -2430,6 +2430,11 @@ class File(ClangObject):
         """Return the last modification time of the file."""
         return File_time(self)
 
+    @property
+    def is_multiple_include_guarded(self):
+        """Return whether this file is guarded against multiple inclusions."""
+        return File_isMultipleIncludeGuarded(self._tu, self) > 0
+
     def __str__(self):
         return self.name
 
@@ -2855,6 +2860,10 @@ File_name.restype = _CXString
 File_time = lib.clang_getFileTime
 File_time.argtypes = [File]
 File_time.restype = c_uint
+
+File_isMultipleIncludeGuarded = lib.clang_isFileMultipleIncludeGuarded
+File_isMultipleIncludeGuarded.argtypes = [TranslationUnit, File]
+File_isMultipleIncludeGuarded.restype = c_uint
 
 # Code completion
 

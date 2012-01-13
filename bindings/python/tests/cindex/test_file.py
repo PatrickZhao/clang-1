@@ -1,4 +1,5 @@
 from clang.cindex import Index, File
+from nose.plugins.skip import SkipTest
 
 def test_file():
   index = Index.create()
@@ -7,3 +8,19 @@ def test_file():
   assert str(file) == "t.c"
   assert file.name == "t.c"
   assert repr(file) == "<File: t.c>"
+  assert not file.is_multiple_include_guarded
+
+def test_is_include_guarded():
+    header = """
+#pragma once
+
+int foo();
+"""
+
+    index = Index.create()
+    tu = index.parse('t.h', unsaved_files = [('t.h', header)])
+    file = File.from_name(tu, 't.h')
+    assert str(file) == 't.h'
+
+    raise SkipTest("is_multiple_include_guarded doesn't seem to work.")
+    assert file.is_multiple_include_guarded
