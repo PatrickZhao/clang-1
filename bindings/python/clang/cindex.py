@@ -2402,10 +2402,15 @@ class File(ClangObject):
     translation unit.
     """
 
+    __slots__ = ('_tu')
+
     @staticmethod
     def from_name(translation_unit, file_name):
         """Retrieve a file handle within the given translation unit."""
-        return File(File_getFile(translation_unit, file_name))
+        f = File(File_getFile(translation_unit, file_name))
+        f._tu = translation_unit
+
+        return f
 
     @staticmethod
     def from_cursor_result(res, fn, args):
