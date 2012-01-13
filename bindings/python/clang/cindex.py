@@ -64,6 +64,8 @@ call is efficient.
 #
 # o implement clang_getExpansionLocation, clang_getPresumedLocation, and
 #   clang_getSpellingLocation.
+#
+# o implement clang_loadDiagnostics.
 
 from ctypes import *
 import collections
@@ -262,6 +264,9 @@ class Diagnostic(object):
     A Diagnostic is a single instance of a Clang diagnostic. It includes the
     diagnostic severity, the message, the location the diagnostic occurred, as
     well as additional source ranges and associated fix-it hints.
+
+    A Diagnostic is instantiated by retrieving it from a TranslationUnit's
+    diagnostics iterator.
     """
 
     Ignored = 0
