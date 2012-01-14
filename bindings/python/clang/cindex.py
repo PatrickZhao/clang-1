@@ -973,6 +973,16 @@ class Cursor(Structure):
         assert self.kind == CursorKind.CXX_BASE_SPECIFIER
         return Cursor_is_virtual_base(self)
 
+    def is_virtual_method(self):
+        """Determine whether the C++ member function is virtual or overwrites a
+        virtual method.
+
+        Returns True if it does. Returns False if it is a non-virtual method or
+        if the cursor does not refer to a member function or member function
+        template.
+        """
+        return Cursor_is_virtual_method(self)
+
     def get_definition(self):
         """
         If the cursor is a reference to a declaration or a declaration of
@@ -2243,6 +2253,10 @@ Cursor_is_static_method.restype = bool
 Cursor_is_virtual_base = lib.clang_isVirtualBase
 Cursor_is_virtual_base.argtypes = [Cursor]
 Cursor_is_virtual_base.restype = bool
+
+Cursor_is_virtual_method = lib.clang_CXXMethod_isVirtual
+Cursor_is_virtual_method.argtypes = [Cursor]
+Cursor_is_virtual_method.restype = bool
 
 Cursor_def = lib.clang_getCursorDefinition
 Cursor_def.argtypes = [Cursor]

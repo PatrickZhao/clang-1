@@ -119,6 +119,9 @@ def test_is_static_method():
     assert foo.is_static_method()
     assert not bar.is_static_method()
 
+def test_is_virtual_method():
+    raise SkipTest('Cursor.is_virtual_method test not yet implemented.')
+
 def test_referenced():
     index = Index.create()
     tu = index.parse('t.c', unsaved_files=[('t.c', 'int a;')])
