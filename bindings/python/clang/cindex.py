@@ -1026,6 +1026,15 @@ class Cursor(Structure):
         return result
 
     @property
+    def template_specialization(self):
+        """Retrieve the Cursor to the template this Cursor specializes or from
+        which it was instantiated.
+
+        Returns None if this Cursor is not a specialization of a template.
+        """
+        return Cursor_get_specialized_cursor_template(self)
+
+    @property
     def spelling(self):
         """Return the spelling of the entity pointed at by the cursor."""
         if not self.kind.is_declaration():
@@ -2261,6 +2270,11 @@ Cursor_usr.errcheck = _CXString.from_result
 Cursor_get_template_cursor_kind = lib.clang_getTemplateCursorKind
 Cursor_get_template_cursor_kind.argtypes = [Cursor]
 Cursor_get_template_cursor_kind.restype = c_uint
+
+Cursor_get_specialized_cursor_template = lib.clang_getSpecializedCursorTemplate
+Cursor_get_specialized_cursor_template.argtypes = [Cursor]
+Cursor_get_specialized_cursor_template.restype = Cursor
+Cursor_get_specialized_cursor_template.errcheck = Cursor.from_cursor_result
 
 Cursor_is_def = lib.clang_isCursorDefinition
 Cursor_is_def.argtypes = [Cursor]
