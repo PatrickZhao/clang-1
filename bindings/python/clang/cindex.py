@@ -1155,6 +1155,13 @@ class Cursor(Structure):
         # created.
         return self._tu
 
+    @property
+    def included_file(self):
+        """Returns the File that is included by the current inclusion cursor."""
+        assert self.kind == CursorKind.INCLUSION_DIRECTIVE
+
+        return Cursor_get_included_file(self)
+
     def get_children(self):
         """Return an iterator for accessing the children of this cursor."""
 
@@ -2060,6 +2067,14 @@ class File(ClangObject):
         """Retrieve a file handle within the given translation unit."""
         return File(File_getFile(translation_unit, file_name))
 
+    @staticmethod
+    def from_cursor_result(res, fn, args):
+        assert isinstance(res, File)
+
+        # Copy a reference to the TranslationUnit to prevent premature GC.
+        res._tu = args[0]._tu
+        return res
+
     @property
     def name(self):
         """Return the complete file and path name of the file."""
@@ -2283,6 +2298,11 @@ Cursor_visit_callback = CFUNCTYPE(c_int, Cursor, Cursor, py_object)
 Cursor_visit = lib.clang_visitChildren
 Cursor_visit.argtypes = [Cursor, Cursor_visit_callback, py_object]
 Cursor_visit.restype = c_uint
+
+Cursor_get_included_file = lib.clang_getIncludedFile
+Cursor_get_included_file.argtypes = [Cursor]
+Cursor_get_included_file.restype = File
+Cursor_get_included_file.errcheck = File.from_cursor_result
 
 # Type Functions
 Type_get_canonical = lib.clang_getCanonicalType

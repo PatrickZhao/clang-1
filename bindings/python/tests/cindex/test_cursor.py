@@ -3,6 +3,7 @@ import gc
 from clang.cindex import CursorKind
 from clang.cindex import TranslationUnit
 from clang.cindex import TypeKind
+from nose.plugins.skip import SkipTest
 from .util import get_cursor
 from .util import get_cursors
 from .util import get_tu
@@ -223,6 +224,18 @@ def test_annotation_attribute():
             break
     else:
         assert False, "Couldn't find annotation"
+
+def test_inclusion():
+    source = '#include "test.h"'
+    header = 'int foo();'
+    tu = TranslationUnit.from_source('test.c',
+            unsaved_files=[('test.h', header), ('test.c', source)])
+    assert tu is not None
+
+    cursors = list(tu.cursor.get_children())
+
+    # TODO Not sure how to test this.
+    raise SkipTest('cursor.included_file test not implemented.')
 
 def test_result_type():
     tu = get_tu('int foo();')
