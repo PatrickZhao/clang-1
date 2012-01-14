@@ -301,3 +301,6 @@ class B_child : B {};
 
     assert not a.is_virtual_base()
     assert b.is_virtual_base()
+
+def test_overloaded_declarations():
+    raise SkipTest('Test for overloaded cursor declarations not implemented.')

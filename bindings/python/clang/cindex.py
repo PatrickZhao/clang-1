@@ -1179,6 +1179,42 @@ class Cursor(Structure):
         return self._objc_type_encoding
 
     @property
+    def overloaded_declaration_count(self):
+        """Return the number of overloaded declarations referenced by this
+        Cursor.
+
+        If this Cursor is not a CursorKind.OVERLOADED_DECL_REF, this will
+        raise.
+        """
+        assert self.kind == CursorKind.OVERLOADED_DECL_REF
+        if not hasattr(self, '_overloaded_decl_count'):
+            self._overloaded_decl_count = Cursor_get_num_overloaded_decl(self)
+
+        return self._overloaded_decl_count
+
+    def get_overloaded_declaration(self, index):
+        """Retrieve a Cursor for a specific overloaded declaration referenced
+        by this Cursor.
+
+        If this Cursor does not reference overloaded declarations or if the
+        index is not valid, this will raise.
+        """
+        assert isinstance(index, int)
+        assert self.kind == CursorKind.OVERLOADED_DECL_REF
+        return Cursor_get_overloaded_decl(self, index)
+
+    @property
+    def overloaded_declarations(self):
+        """Generator for Cursor instances representing the overloaded
+        declarations referenced by this Cursor.
+
+        If this Cursor is not a CursorKind.OVERLOADED_DECL_REF, this will
+        raise.
+        """
+        for i in range(0, self.overloaded_declaration_count):
+            yield self.get_overloaded_declaration(i)
+
+    @property
     def hash(self):
         """Returns a hash of the cursor as an int."""
         if not hasattr(self, '_hash'):
@@ -2405,6 +2441,15 @@ Cursor_objc_type_encoding = lib.clang_getDeclObjCTypeEncoding
 Cursor_objc_type_encoding.argtypes = [Cursor]
 Cursor_objc_type_encoding.restype = _CXString
 Cursor_objc_type_encoding.errcheck = _CXString.from_result
+
+Cursor_get_num_overloaded_decl = lib.clang_getNumOverloadedDecls
+Cursor_get_num_overloaded_decl.argtypes = [Cursor]
+Cursor_get_num_overloaded_decl.restype = c_uint
+
+Cursor_get_overloaded_decl = lib.clang_getOverloadedDecl
+Cursor_get_overloaded_decl.argtypes = [Cursor, c_uint]
+Cursor_get_overloaded_decl.restype = Cursor
+Cursor_get_overloaded_decl.errcheck = Cursor.from_cursor_result
 
 Cursor_semantic_parent = lib.clang_getCursorSemanticParent
 Cursor_semantic_parent.argtypes = [Cursor]
