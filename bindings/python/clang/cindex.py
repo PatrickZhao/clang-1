@@ -66,6 +66,14 @@ call is efficient.
 #   clang_getSpellingLocation.
 #
 # o implement clang_loadDiagnostics.
+#
+# o Expose CXLinkageKind, CXLanguageKind, and CXAvailabilityKind for cursors.
+#
+# o Expose Cursor's overwritten cursors.
+#
+# o Expose CXCallingConv for function types.
+#
+# o Implement Obj-C USR functions.
 
 from ctypes import *
 import collections
@@ -1319,6 +1327,8 @@ class Cursor(Structure):
     def get_children(self):
         """Return an iterator for accessing the children of this cursor."""
 
+        # TODO Support recursion.
+        # TODO Implement as true iterator without buffering.
         # FIXME: Expose iteration from CIndex, PR6125.
         def visitor(child, parent, children):
             # FIXME: Document this assertion in API.
