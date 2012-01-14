@@ -1164,6 +1164,12 @@ class Cursor(Structure):
         return self._tu
 
     @property
+    def ib_outlet_collection_type(self):
+        """Returns the collection element Type for an IB Outlet Collection
+        attribute."""
+        return Cursor_ib_outlet_collection_type(self)
+
+    @property
     def included_file(self):
         """Returns the File that is included by the current inclusion cursor."""
         assert self.kind == CursorKind.INCLUSION_DIRECTIVE
@@ -2310,6 +2316,11 @@ Cursor_visit_callback = CFUNCTYPE(c_int, Cursor, Cursor, py_object)
 Cursor_visit = lib.clang_visitChildren
 Cursor_visit.argtypes = [Cursor, Cursor_visit_callback, py_object]
 Cursor_visit.restype = c_uint
+
+Cursor_ib_outlet_collection_type = lib.clang_getIBOutletCollectionType
+Cursor_ib_outlet_collection_type.argtypes = [Cursor]
+Cursor_ib_outlet_collection_type.restype = Type
+Cursor_ib_outlet_collection_type.errcheck = Type.from_result
 
 Cursor_get_included_file = lib.clang_getIncludedFile
 Cursor_get_included_file.argtypes = [Cursor]
