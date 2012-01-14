@@ -1010,6 +1010,22 @@ class Cursor(Structure):
         return CursorKind.from_id(self._kind_id)
 
     @property
+    def template_kind(self):
+        """Return the CursorKind of the specializations that would be generated
+        by instantiating the template.
+
+        This can be used to determine whether a template is declared with
+        "struct," "class," "or "union," for example.
+
+        If the cursor does not refer to a template, None is returned.
+        """
+        result = Cursor_get_template_cursor_kind(self)
+        if result == CursorKind.NO_DECL_FOUND:
+            return None
+
+        return result
+
+    @property
     def spelling(self):
         """Return the spelling of the entity pointed at by the cursor."""
         if not self.kind.is_declaration():
@@ -2241,6 +2257,10 @@ Cursor_usr = lib.clang_getCursorUSR
 Cursor_usr.argtypes = [Cursor]
 Cursor_usr.restype = _CXString
 Cursor_usr.errcheck = _CXString.from_result
+
+Cursor_get_template_cursor_kind = lib.clang_getTemplateCursorKind
+Cursor_get_template_cursor_kind.argtypes = [Cursor]
+Cursor_get_template_cursor_kind.restype = c_uint
 
 Cursor_is_def = lib.clang_isCursorDefinition
 Cursor_is_def.argtypes = [Cursor]
