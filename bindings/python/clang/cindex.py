@@ -965,6 +965,14 @@ class Cursor(Structure):
         """
         return Cursor_is_static_method(self)
 
+    def is_virtual_base(self):
+        """Determine if the base class specified by this Cursor is virtual.
+
+        If this cursor does not point to a valid kind, an exception is raised.
+        """
+        assert self.kind == CursorKind.CXX_BASE_SPECIFIER
+        return Cursor_is_virtual_base(self)
+
     def get_definition(self):
         """
         If the cursor is a reference to a declaration or a declaration of
@@ -2214,6 +2222,10 @@ Cursor_is_def.restype = bool
 Cursor_is_static_method = lib.clang_CXXMethod_isStatic
 Cursor_is_static_method.argtypes = [Cursor]
 Cursor_is_static_method.restype = bool
+
+Cursor_is_virtual_base = lib.clang_isVirtualBase
+Cursor_is_virtual_base.argtypes = [Cursor]
+Cursor_is_virtual_base.restype = bool
 
 Cursor_def = lib.clang_getCursorDefinition
 Cursor_def.argtypes = [Cursor]

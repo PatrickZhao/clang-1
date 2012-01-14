@@ -244,3 +244,32 @@ def test_result_type():
     assert foo is not None
     t = foo.result_type
     assert t.kind == TypeKind.INT
+
+def test_virtual_base():
+    """Ensure Cursor.is_virtual_base() works."""
+
+    source = """
+class A {
+    int i();
+};
+
+class B {
+    virtual int i() = 0;
+};
+
+class A_child : A {};
+class B_child : B {};
+"""
+    tu = get_tu(source)
+
+    for cursor in tu.cursor.get_children():
+        if cursor.spelling == 'A_child':
+            a = cursor
+        elif cursor.spelling == 'B_child':
+            b = cursor
+
+    assert a is not None
+    assert b is not None
+
+    assert not a.is_virtual_base()
+    assert b.is_virtual_base()
