@@ -2073,6 +2073,81 @@ class Index(ClangObject):
         return TranslationUnit.from_source(path, args, unsaved_files, options,
                                            self)
 
+class ResourceUsageKind(object):
+    """Represents a kind of resource usage."""
+
+    __slots__ = ('id', '_name')
+
+    def __init__(self, id):
+        assert id in ResourceUsageKind._kinds
+        self.id = id
+        self._name = None
+
+    @property
+    def name(self):
+        """The string name of this kind."""
+        if self._name is None:
+            self._name = ResourceUsage_name(self.id)
+
+        return self._name
+
+    @staticmethod
+    def register(id, name):
+        ResourceUsageKind._kinds[id] = name
+
+    def __repr__(self):
+        return 'ResourceUsageKind.%s' % ResourceUsageKind._kinds[self.id]
+
+ResourceUsage_name = lib.clang_getTUResourceUsageName
+ResourceUsage_name.argtypes = [c_uint]
+ResourceUsage_name.restype = c_char_p
+
+ResourceUsageKind._kinds = {}
+ResourceUsageKind.register(1, 'AST')
+ResourceUsageKind.register(2, 'Identifiers')
+ResourceUsageKind.register(3, 'Selectors')
+ResourceUsageKind.register(4, 'GlobalCompletionResults')
+ResourceUsageKind.register(5, 'SourceManagerContentCache')
+ResourceUsageKind.register(6, 'ASTSideTables')
+ResourceUsageKind.register(7, 'SourceManagerMalloc')
+ResourceUsageKind.register(8, 'SourceManagerMMap')
+ResourceUsageKind.register(9, 'ExternalASTSourceMalloc')
+ResourceUsageKind.register(10, 'ExternalASTSourceMMap')
+ResourceUsageKind.register(11, 'Preprocessor')
+ResourceUsageKind.register(12, 'PreprocessingRecord')
+ResourceUsageKind.register(13, 'SourceManagerDataStructures')
+ResourceUsageKind.register(14, 'PreprocessorHeaderSearch')
+
+class CXTUResourceUsage(Structure):
+    """Represents a raw CXTUResourceUsage struct."""
+
+    _fields_ = [('data', c_void_p),('number', c_uint),('entries', c_void_p)]
+
+    class CXTUResourceUsageEntry(Structure):
+        _fields_ = [('kind', c_uint), ('amount', c_ulong)]
+
+    def __del__(self):
+        ResourceUsage_dispose(self)
+
+    def to_dict(self):
+        """Converts the structure to a dictionary.
+
+        Keys in the dictionary are ResourceUsageKind instances and values are
+        the numeric value for that kind.
+        """
+        p_type = POINTER(CXTUResourceUsage.CXTUResourceUsageEntry * self.number)
+        p = cast(self.entries, p_type).contents
+
+        ret = {}
+        for entry in p:
+            ret[ResourceUsageKind(entry.kind)] = entry.amount
+
+        return ret
+
+
+ResourceUsage_dispose = lib.clang_disposeCXTUResourceUsage
+ResourceUsage_dispose.argtypes = [CXTUResourceUsage]
+
 class TranslationUnit(ClangObject):
     """Represents a source code translation unit.
 
@@ -2403,6 +2478,16 @@ class TranslationUnit(ClangObject):
 
         for token in tokens:
             yield token
+
+    @property
+    def resource_usage(self):
+        """Obtain the resource usage for the Translation Unit.
+
+        Returns a dictionary of strings to ints where the keys correspond to
+        the resource name.
+        """
+        resource = TranslationUnit_getResourceUsage(self)
+        return resource.to_dict()
 
 class File(ClangObject):
     """
@@ -2855,6 +2940,10 @@ TranslationUnit_defaultSaveOptions.restype = c_uint
 TranslationUnit_save = lib.clang_saveTranslationUnit
 TranslationUnit_save.argtypes = [TranslationUnit, c_char_p, c_uint]
 TranslationUnit_save.restype = c_int
+
+TranslationUnit_getResourceUsage = lib.clang_getCXTUResourceUsage
+TranslationUnit_getResourceUsage.argtypes = [TranslationUnit]
+TranslationUnit_getResourceUsage.restype = CXTUResourceUsage
 
 # File Functions
 File_getFile = lib.clang_getFile

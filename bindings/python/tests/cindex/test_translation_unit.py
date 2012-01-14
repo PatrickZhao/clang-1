@@ -151,3 +151,12 @@ def test_index_parse():
     index = Index.create()
     tu = index.parse(path)
     assert isinstance(tu, TranslationUnit)
+
+def test_resource_usage():
+    path = os.path.join(kInputsDir, 'hello.cpp')
+    index = Index.create()
+    tu = index.parse(path)
+
+    resources = tu.resource_usage
+    # Some arbitrary number.
+    assert len(resources.keys()) > 4
