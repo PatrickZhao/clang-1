@@ -144,6 +144,9 @@ def test_referenced():
 
     # TODO Test None referenced result.
 
+def test_reference_name_extent():
+    raise SkipTest('Cursor.get_reference_extent test not yet implemented.')
+
 def test_underlying_type():
     tu = get_tu('typedef int foo;')
     typedef = get_cursor(tu, 'foo')

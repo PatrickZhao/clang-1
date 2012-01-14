@@ -1239,6 +1239,51 @@ class Cursor(Structure):
         Cursor_visit(self, Cursor_visit_callback(visitor), children)
         return iter(children)
 
+    def get_reference_name_extent(self,
+                                  index=0,
+                                  qualifier=False,
+                                  template_arguments=False,
+                                  single_piece=False):
+        """Obtain the SourceRange for the thing referenced by this Cursor.
+
+        This is only valid on cursors that reference something else. If the
+        cursor does not reference something, None will be returned.
+
+        Some referenced cursors refer to multiple source ranges. You have 2
+        options: 1) force these to be combined together by setting single_piece
+        to True 2) Query each separately through the index argument.
+
+        Unfortunately, libclang does not expose an API to say how many source
+        ranges are available for a referenced cursor. So, the only way to
+        obtain the multiple individual SourceRange instances is to call this
+        method with an incrementing index argument until None is returned. The
+        get_reference_name_extents() method is a convenience wrapper that does
+        this.
+
+        Arguments:
+
+        index -- The numeric 0-indexed piece to retrieve. If single_piece is
+        True, only 0 is valid.
+        qualifier -- Include the nested-name specifier in the return value.
+        template_arguments -- Include explicit template arguments in the return
+        value.
+        single_piece -- If True and the name is non-contiguous, return the full
+        spanning range.
+        """
+        flags = 0
+        if qualifier:
+            flags |= 1
+        if template_arguments:
+            flags |= 2
+        if single_piece:
+            flags |= 4
+            index = 0
+
+        return Cursor_get_reference_name_range(self, flags, index)
+
+    def get_reference_name_extents(self):
+        raise Exception('Not yet implemented.')
+
     @staticmethod
     def from_result(res, fn, args):
         assert isinstance(res, Cursor)
@@ -2385,6 +2430,10 @@ Cursor_get_included_file = lib.clang_getIncludedFile
 Cursor_get_included_file.argtypes = [Cursor]
 Cursor_get_included_file.restype = File
 Cursor_get_included_file.errcheck = File.from_cursor_result
+
+Cursor_get_reference_name_range = lib.clang_getCursorReferenceNameRange
+Cursor_get_reference_name_range.argtypes = [Cursor, c_uint, c_uint]
+Cursor_get_reference_name_range.restype = SourceRange
 
 # Type Functions
 Type_get_canonical = lib.clang_getCanonicalType
