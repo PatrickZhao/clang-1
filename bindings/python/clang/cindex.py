@@ -1067,6 +1067,17 @@ class Cursor(Structure):
         return self._canonical
 
     @property
+    def referenced(self):
+        """Return the Cursor referenced by this Cursor.
+
+        If no Cursor is referenced by this Cursor, returns None.
+        """
+        if not hasattr(self, '_referenced'):
+            self._referenced = Cursor_ref(self)
+
+        return self._referenced
+
+    @property
     def result_type(self):
         """Retrieve the Type of the result for this Cursor."""
         if not hasattr(self, '_result_type'):

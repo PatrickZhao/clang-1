@@ -119,6 +119,22 @@ def test_is_static_method():
     assert foo.is_static_method()
     assert not bar.is_static_method()
 
+def test_referenced():
+    index = Index.create()
+    tu = index.parse('t.c', unsaved_files=[('t.c', 'int a;')])
+    assert tu is not None
+
+    for cursor in tu.cursor.get_children():
+        if cursor.spelling == 'a':
+            a = cursor
+            break
+
+    assert a is not None
+    assert a.referenced is not None
+    assert a.referenced == cursor
+
+    # TODO Test None referenced result.
+
 def test_underlying_type():
     tu = get_tu('typedef int foo;')
     typedef = get_cursor(tu, 'foo')
