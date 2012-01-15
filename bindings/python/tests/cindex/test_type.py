@@ -208,9 +208,6 @@ def test_is_pod():
     i = get_cursor(tu, 'i')
     f = get_cursor(tu, 'f')
 
-    assert i is not None
-    assert f is not None
-
     assert i.type.is_pod()
     assert not f.type.is_pod()
 
@@ -257,9 +254,6 @@ def test_element_count():
     tu = get_tu('int i[5]; int j;')
     i = get_cursor(tu, 'i')
     j = get_cursor(tu, 'j')
-
-    assert i is not None
-    assert j is not None
 
     assert i.type.element_count == 5
 

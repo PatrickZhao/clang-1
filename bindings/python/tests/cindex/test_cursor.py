@@ -258,7 +258,6 @@ def test_inclusion():
     header = 'int foo();'
     tu = TranslationUnit.from_source('test.c',
             unsaved_files=[('test.h', header), ('test.c', source)])
-    assert tu is not None
 
     cursors = list(tu.cursor.get_children())
 

@@ -1949,14 +1949,14 @@ class Token(Structure):
 
 ## CIndex Objects ##
 
-# CIndex objects (derived from ClangObject) are essentially lightweight
-# wrappers attached to some underlying object, which is exposed via CIndex as
-# a void*.
-
 class ClangObject(object):
-    """
-    A helper for Clang objects. This class helps act as an intermediary for
-    the ctypes library and the Clang CIndex library.
+    """Base class for Clang objects.
+
+    This is the common base class for all Clang types that are represented as
+    void * types. The purpose of this class is to marshall types between Python
+    and libclang through the ctypes module.
+
+    This class should never be instantiated directly, only through children.
     """
     def __init__(self, obj):
         assert isinstance(obj, c_object_p) and obj
@@ -2140,16 +2140,16 @@ class CodeCompletionResults(ClangObject):
 
 
 class Index(ClangObject):
-    """
-    The Index type provides the primary interface to the Clang CIndex library,
-    primarily by providing an interface for reading and parsing translation
-    units.
+    """The main interface to the Clang CIndex library.
+
+    This can be thought of as context. Every operation takes place inside a
+    specific Index and all objects can be traced to one.
     """
 
     @staticmethod
     def create(excludeDecls=False):
-        """
-        Create a new Index.
+        """Create a new Index.
+
         Parameters:
         excludeDecls -- Exclude local declarations from translation units.
         """
@@ -2388,6 +2388,10 @@ class TranslationUnit(ClangObject):
 
         ClangObject.__init__(self, ptr)
 
+        # We hold on to a reference to the underlying index so it won't get
+        # garbage collected before us.
+        self._index = index
+
     def __del__(self):
         lib.clang_disposeTranslationUnit(self)
 
@@ -2442,13 +2446,12 @@ class TranslationUnit(ClangObject):
         return DiagIterator(self)
 
     def reparse(self, unsaved_files=None, options=0):
-        """
-        Reparse an already parsed translation unit.
+        """Reparse an already parsed translation unit.
 
-        In-memory contents for files can be provided by passing a list of pairs
-        as unsaved_files, the first items should be the filenames to be mapped
-        and the second should be the contents to be substituted for the
-        file. The contents may be passed as strings or file objects.
+        In-memory contents for files can be provided by passing a list of
+        2-tuples in unsaved_files. The first item should be the filename to
+        be mapped and the second should be the contents to be substituted for
+        the file. The contents may be passed as strings or file objects.
         """
         if unsaved_files is None:
             unsaved_files = []
@@ -2531,9 +2534,13 @@ class TranslationUnit(ClangObject):
 
         This is a generator for Token instances.
 
-        To restrict tokens to a subset of source code, define both
-        start_location and end_location (they are SourceLocation instances) or
-        define sourcerange, which is a SourceRange instance.
+        Currently, the extraction range must be explicitly defined. This can be
+        accomplished by passing both start_location and end_location. Or, pass
+        sourcerange.
+
+        start_location -- SourceLocation from which to start getting tokens.
+        end_location -- SourceLocation at which to finish receiving tokens.
+        sourcerange -- SourceRange to fetch tokens from.
         """
         use_range = None
         if sourcerange is not None:
@@ -2544,7 +2551,7 @@ class TranslationUnit(ClangObject):
             assert(isinstance(end_location, SourceLocation))
             use_range = SourceRange.from_locations(start_location, end_location)
         else:
-            raise Exception("Must supply sourcerange or locations.")
+            raise Exception('Must supply sourcerange or locations.')
 
         # The allocated memory during clang_tokenize() merely holds a copy of
         # the structs. We make a copy of each array element and then release

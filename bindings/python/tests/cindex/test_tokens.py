@@ -3,7 +3,6 @@ from clang.cindex import Index, File, SourceLocation, CursorKind
 def test_token_to_cursor():
     index = Index.create()
     tu = index.parse('t.c', unsaved_files=[('t.c', 'int i = 5;')])
-    assert tu is not None
 
     file = File.from_name(tu, 't.c')
     start = SourceLocation.from_position(tu, file, 1, 1)

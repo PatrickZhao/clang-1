@@ -5,6 +5,7 @@ kInputsDir = os.path.join(os.path.dirname(__file__), 'INPUTS')
 
 def test_create():
     index = Index.create()
+    assert isinstance(index, Index)
 
 # FIXME: test Index.read
 
