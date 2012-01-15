@@ -76,6 +76,11 @@ Known Issues and Limitations
   the reason a Translation Unit failed to load. So, we currently raise an empty
   exception if this happens. Hopefully libclang will support richer error
   reporting someday.
+
+* Possible to segfault under some circumstances. Most (perhaps all) of the
+  C APIs require an Index to be created. If you attempt to use functions like
+  clang_getNullCursor() without having an Index *somewhere*, you may see a
+  crash.
 """
 
 # TODO
