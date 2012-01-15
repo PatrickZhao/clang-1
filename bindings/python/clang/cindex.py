@@ -88,6 +88,17 @@ from ctypes import Structure
 import collections
 
 def get_cindex_library():
+    """Obtain a reference to the libclang library.
+
+    This attempts to find libclang in the default library search directories.
+    If the library cannot be found, this will raise inside the ctypes module.
+
+    The returned instance should be fed into register_functions() to set up
+    the Python prototypes.
+
+    This function is called automatically as part of module load. You shouldn't
+    need to call it outside of this module.
+    """
     # FIXME: It's probably not the case that the library is actually found in
     # this location. We need a better system of identifying and loading the
     # CIndex library. It could be on path or elsewhere, or versioned, etc.
@@ -106,7 +117,10 @@ def get_cindex_library():
 # this by marshalling object arguments as void**.
 c_object_p = POINTER(c_void_p)
 
+# Attempt to load libclang and make it available in module scope.
 lib = get_cindex_library()
+
+# This will hold CFUNCTYPE instances for Python callbacks.
 callbacks = {}
 
 ### Exception Classes ###
