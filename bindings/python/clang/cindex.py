@@ -107,6 +107,8 @@ from ctypes import py_object
 from ctypes import Structure
 import collections
 
+import platform
+
 def get_cindex_library():
     """Obtain a reference to the libclang library.
 
@@ -122,7 +124,6 @@ def get_cindex_library():
     # FIXME: It's probably not the case that the library is actually found in
     # this location. We need a better system of identifying and loading the
     # CIndex library. It could be on path or elsewhere, or versioned, etc.
-    import platform
     name = platform.system()
     if name == 'Darwin':
         return cdll.LoadLibrary('libclang.dylib')
