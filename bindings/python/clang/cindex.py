@@ -1063,11 +1063,11 @@ class Cursor(object):
 
     class CXCursor(Structure):
         """Low-level representation of a cursor."""
-        _fields_ = (
+        _fields_ = [
             ('kind', c_uint),
             ('xdata', c_int),
             ('data', c_void_p * 3)
-        )
+        ]
 
     __slots__ = (
         '_access_specifier',
@@ -1892,10 +1892,10 @@ class Token(Structure):
         This is an internal class and shouldn't be used externally.
         """
 
-        _fields_ = (
+        _fields_ = [
             ('int_data', c_uint * 4),
             ('ptr_data', c_void_p)
-        )
+        ]
 
     __slots__ = (
         '_cursor',
