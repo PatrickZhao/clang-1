@@ -1857,32 +1857,48 @@ class Token(Structure):
     you shouldn't do it.
     """
 
+    class CXToken(Structure):
+        """Represents a CXToken structure.
+
+        This is an internal class and shouldn't be used externally.
+        """
+
+        _fields_ = (
+            ('int_data', c_uint * 4),
+            ('ptr_data', c_void_p)
+        )
+
     __slots__ = (
         '_cursor',
         '_extent',
         '_kind',
         '_location',
         '_spelling',
+        '_struct',
         '_tu',
     )
 
-    _fields_ = [("int_data", c_uint * 4), ("ptr_data", c_void_p)]
+    def __init__(self, structure=None, tu=None):
+        if structure is not None:
+            assert isinstance(structure, Token.CXToken)
 
-    def __init__(self, *args, **kwargs):
-        Structure.__init__(self, *args, **kwargs)
+        if tu is not None:
+            assert isinstance(tu, TranslationUnit)
+
+        self._struct = structure
+        self._tu = tu
 
         self._cursor = None
         self._extent = None
         self._kind = None
         self._location = None
         self._spelling = None
-        self._tu = None
 
     @property
     def kind(self):
         """The TokenKind for this token."""
         if self._kind is None:
-            self._kind = lib.clang_getTokenKind(self)
+            self._kind = lib.clang_getTokenKind(self._struct)
 
         return self._kind
 
@@ -1893,7 +1909,7 @@ class Token(Structure):
         This is the literal text defining the token.
         """
         if self._spelling is None:
-            self._spelling = lib.clang_getTokenSpelling(self._tu, self)
+            self._spelling = lib.clang_getTokenSpelling(self._tu, self._struct)
 
         return self._spelling
 
@@ -1904,7 +1920,7 @@ class Token(Structure):
         Returns a SourceLocation instance.
         """
         if self._location is None:
-            self._location = lib.clang_getTokenLocation(self._tu, self)
+            self._location = lib.clang_getTokenLocation(self._tu, self._struct)
 
         return self._location
 
@@ -1915,7 +1931,7 @@ class Token(Structure):
         Returns a SourceRange instance.
         """
         if self._extent is None:
-            self._extent = lib.clang_getTokenExtent(self._tu, self)
+            self._extent = lib.clang_getTokenExtent(self._tu, self._struct)
 
         return self._extent
 
@@ -1924,7 +1940,7 @@ class Token(Structure):
         """Retrieve the Cursor this Token corresponds to."""
         if self._cursor is None:
             cursor = Cursor.CXCursor()
-            lib.clang_annotateTokens(self._tu, byref(self), 1,
+            lib.clang_annotateTokens(self._tu, byref(self._struct), 1,
                                      byref(cursor))
 
             self._cursor = Cursor(cursor, self._tu)
@@ -2537,22 +2553,21 @@ class TranslationUnit(ClangObject):
 
         # TODO there is probably a more efficient way to copy the data without
         # having to create an original Token instance.
-        memory = POINTER(Token)()
+        memory = POINTER(Token.CXToken)()
         number = c_uint()
         lib.clang_tokenize(self, use_range, byref(memory), byref(number))
 
         count = int(number.value)
-        tokens_p = cast(memory, POINTER(Token * count)).contents
+        tokens_p = cast(memory, POINTER(Token.CXToken * count)).contents
         tokens = [None] * count
 
         for i in range(0, count):
             original = tokens_p[i]
-            copy = Token()
+            copy = Token.CXToken()
             copy.int_data = original.int_data
             copy.ptr_data = original.ptr_data
-            copy._tu = self
 
-            tokens[i] = copy
+            tokens[i] = Token(structure=copy, tu=self)
 
         lib.clang_disposeTokens(self, memory, number)
 
@@ -2653,7 +2668,7 @@ def register_functions(lib):
     to call out to the shared library.
     """
     # Functions are registered in strictly alphabetical order.
-    lib.clang_annotateTokens.argtype = [TranslationUnit, POINTER(Token),
+    lib.clang_annotateTokens.argtype = [TranslationUnit, POINTER(Token.CXToken),
                                         c_uint, POINTER(Cursor.CXCursor)]
 
     lib.clang_codeCompleteAt.argtypes = [TranslationUnit, c_char_p, c_int,
@@ -2695,7 +2710,8 @@ def register_functions(lib):
 
     lib.clang_disposeString.argtypes = [_CXString]
 
-    lib.clang_disposeTokens.argtype = [TranslationUnit, POINTER(Token), c_uint]
+    lib.clang_disposeTokens.argtype = [TranslationUnit, POINTER(Token.CXToken),
+                                      c_uint]
 
     lib.clang_disposeTranslationUnit.argtypes = [TranslationUnit]
 
@@ -2926,17 +2942,17 @@ def register_functions(lib):
     lib.clang_getTemplateCursorKind.argtypes = [Cursor.CXCursor]
     lib.clang_getTemplateCursorKind.restype = c_uint
 
-    lib.clang_getTokenExtent.argtypes = [TranslationUnit, Token]
+    lib.clang_getTokenExtent.argtypes = [TranslationUnit, Token.CXToken]
     lib.clang_getTokenExtent.restype = SourceRange
 
-    lib.clang_getTokenKind.argtypes = [Token]
+    lib.clang_getTokenKind.argtypes = [Token.CXToken]
     lib.clang_getTokenKind.restype = c_uint
     lib.clang_getTokenKind.errcheck = TokenKind.from_result
 
-    lib.clang_getTokenLocation.argtype = [TranslationUnit, Token]
+    lib.clang_getTokenLocation.argtype = [TranslationUnit, Token.CXToken]
     lib.clang_getTokenLocation.restype = SourceLocation
 
-    lib.clang_getTokenSpelling.argtype = [TranslationUnit, Token]
+    lib.clang_getTokenSpelling.argtype = [TranslationUnit, Token.CXToken]
     lib.clang_getTokenSpelling.restype = _CXString
     lib.clang_getTokenSpelling.errcheck = _CXString.from_result
 
@@ -3030,7 +3046,7 @@ def register_functions(lib):
     lib.clang_saveTranslationUnit.restype = c_int
 
     lib.clang_tokenize.argtypes = [TranslationUnit, SourceRange,
-            POINTER(POINTER(Token)), POINTER(c_uint)]
+            POINTER(POINTER(Token.CXToken)), POINTER(c_uint)]
 
     lib.clang_visitChildren.argtypes = [Cursor.CXCursor, callbacks['cursor_visit'],
             py_object]
