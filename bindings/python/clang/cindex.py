@@ -438,10 +438,10 @@ class CXXAccessSpecifier(object):
         CXXAccessSpecifier._levels[value] = self
 
     @staticmethod
-    def from_id(id):
-        result = CXXAccessSpecifier._levels.get(id, None)
+    def from_id(value):
+        result = CXXAccessSpecifier._levels.get(value, None)
         if result is None:
-            raise ValueError(id)
+            raise ValueError(value)
 
         return result
 
@@ -490,10 +490,10 @@ class CursorKind(object):
         return self._name_map[self]
 
     @staticmethod
-    def from_id(id):
-        if id >= len(CursorKind._kinds) or CursorKind._kinds[id] is None:
+    def from_id(value):
+        if value >= len(CursorKind._kinds) or CursorKind._kinds[value] is None:
             raise ValueError,'Unknown cursor kind'
-        return CursorKind._kinds[id]
+        return CursorKind._kinds[value]
 
     @staticmethod
     def get_all_kinds():
@@ -1497,10 +1497,10 @@ class TypeKind(object):
         return lib.clang_getTypeKindSpelling(self.value)
 
     @staticmethod
-    def from_id(id):
-        if id >= len(TypeKind._kinds) or TypeKind._kinds[id] is None:
-            raise ValueError,'Unknown type kind %d' % id
-        return TypeKind._kinds[id]
+    def from_id(value):
+        if value >= len(TypeKind._kinds) or TypeKind._kinds[value] is None:
+            raise ValueError,'Unknown type kind %d' % value
+        return TypeKind._kinds[value]
 
     def __repr__(self):
         return 'TypeKind.%s' % (self.name,)
