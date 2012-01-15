@@ -51,11 +51,15 @@ Cursor
   Representation of an individual node in a parsed abstract syntax tree (AST).
   Cursors allow you to inspect Clang's representation of parsed source code.
 
+CursorKind
+
+  Represents a specific kind of Cursor. Each cursor kind (class declaration,
+  variable reference, expression, etc) has a different type of this class.
+
 Token
 
   Representation of a typed entity in source code. Source code is first parsed
   into tokens (literals, keywords, comments, etc).
-
 
 SourceRange, SourceLocation, and File
 
@@ -198,6 +202,10 @@ class _CXString(Structure):
 
     @staticmethod
     def from_result(res, func, args):
+        """Helper for ctypes that is called whenever a CXString is returned.
+
+        This converts the CXString struct into a Python string.
+        """
         assert isinstance(res, _CXString)
         return lib.clang_getCString(res)
 
