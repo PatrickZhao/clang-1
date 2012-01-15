@@ -72,7 +72,19 @@ call is efficient.
 #
 # o Implement Obj-C USR functions.
 
-from ctypes import *
+from ctypes import byref
+from ctypes import c_char_p
+from ctypes import c_int
+from ctypes import c_longlong
+from ctypes import c_uint
+from ctypes import c_ulong
+from ctypes import c_void_p
+from ctypes import cast
+from ctypes import cdll
+from ctypes import CFUNCTYPE
+from ctypes import POINTER
+from ctypes import py_object
+from ctypes import Structure
 import collections
 
 def get_cindex_library():
