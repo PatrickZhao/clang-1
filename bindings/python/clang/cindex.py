@@ -1793,6 +1793,16 @@ class Token(Structure):
 
         return self._extent
 
+    @property
+    def cursor(self):
+        """Retrieve the Cursor this Token corresponds to."""
+        if not hasattr(self, '_cursor'):
+            self._cursor = Cursor()
+            Token_annotate_tokens(self._tu, byref(self), 1, byref(self._cursor))
+            self._cursor._tu = self._tu
+
+        return self._cursor
+
 ## CIndex Objects ##
 
 # CIndex objects (derived from ClangObject) are essentially lightweight
@@ -2893,6 +2903,10 @@ Token_tokenize.argtype = [TranslationUnit, SourceRange,
 
 Token_dispose_tokens = lib.clang_disposeTokens
 Token_dispose_tokens.argtype = [TranslationUnit, POINTER(Token), c_uint]
+
+Token_annotate_tokens = lib.clang_annotateTokens
+Token_annotate_tokens.argtype = [TranslationUnit, POINTER(Token), c_uint,
+                                 POINTER(Cursor)]
 
 # Index Functions
 Index_create = lib.clang_createIndex
