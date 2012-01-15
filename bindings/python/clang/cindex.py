@@ -2513,7 +2513,7 @@ class File(ClangObject):
     @property
     def name(self):
         """Return the complete file and path name of the file."""
-        return lib.clang_getCString(lib.clang_getFileName(self))
+        return lib.clang_getFileName(self)
 
     @property
     def time(self):
@@ -2762,7 +2762,7 @@ def register_functions(lib):
 
     lib.clang_getFileName.argtypes = [File]
     lib.clang_getFileName.restype = _CXString
-    # TODO go through _CXString.from_result?
+    lib.clang_getFileName.errcheck = _CXString.from_result
 
     lib.clang_getFileTime.argtypes = [File]
     lib.clang_getFileTime.restype = c_uint
