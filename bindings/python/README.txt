@@ -41,7 +41,7 @@ Module Documentation
 For now, the easiest way to view documentation on the Python modules is
 by running:
 
-  $ pydoc ./clang/cindex.py
+  $ pydoc clang.cindex
 
 Testing
 =======
