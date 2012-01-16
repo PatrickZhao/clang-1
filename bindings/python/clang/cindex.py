@@ -1522,95 +1522,51 @@ class Cursor(object):
 ### Type Kinds ###
 
 class TypeKind(object):
-    """
-    Describes the kind of type.
-    """
+    """Describes the kind of type."""
 
-    # The unique kind objects, indexed by id.
-    _kinds = []
-    _name_map = None
+    __slots__ = (
+        'name',
+        'value'
+    )
 
-    def __init__(self, value):
-        if value >= len(TypeKind._kinds):
-            TypeKind._kinds += [None] * (value - len(TypeKind._kinds) + 1)
-        if TypeKind._kinds[value] is not None:
-            raise ValueError('TypeKind already loaded')
+    _value_map = {}
+
+    def __init__(self, value, name):
+        self.name = name
         self.value = value
-        TypeKind._kinds[value] = self
-        TypeKind._name_map = None
-
-    def from_param(self):
-        return self.value
-
-    @property
-    def name(self):
-        """Get the enumeration name of this cursor kind."""
-        if self._name_map is None:
-            self._name_map = {}
-            for key, value in TypeKind.__dict__.items():
-                if isinstance(value, TypeKind):
-                    self._name_map[value] = key
-        return self._name_map[self]
 
     @property
     def spelling(self):
         """Retrieve the spelling of this TypeKind."""
         return lib.clang_getTypeKindSpelling(self.value)
 
-    @staticmethod
-    def from_id(value):
-        if value >= len(TypeKind._kinds) or TypeKind._kinds[value] is None:
-            raise ValueError('Unknown type kind %d' % value)
-        return TypeKind._kinds[value]
+    def from_param(self):
+        return self.value
 
     def __repr__(self):
         return 'TypeKind.%s' % (self.name,)
 
+    @staticmethod
+    def from_id(value):
+        result = TypeKind._value_map.get(value, None)
 
-TypeKind.INVALID = TypeKind(0)
-TypeKind.UNEXPOSED = TypeKind(1)
-TypeKind.VOID = TypeKind(2)
-TypeKind.BOOL = TypeKind(3)
-TypeKind.CHAR_U = TypeKind(4)
-TypeKind.UCHAR = TypeKind(5)
-TypeKind.CHAR16 = TypeKind(6)
-TypeKind.CHAR32 = TypeKind(7)
-TypeKind.USHORT = TypeKind(8)
-TypeKind.UINT = TypeKind(9)
-TypeKind.ULONG = TypeKind(10)
-TypeKind.ULONGLONG = TypeKind(11)
-TypeKind.UINT128 = TypeKind(12)
-TypeKind.CHAR_S = TypeKind(13)
-TypeKind.SCHAR = TypeKind(14)
-TypeKind.WCHAR = TypeKind(15)
-TypeKind.SHORT = TypeKind(16)
-TypeKind.INT = TypeKind(17)
-TypeKind.LONG = TypeKind(18)
-TypeKind.LONGLONG = TypeKind(19)
-TypeKind.INT128 = TypeKind(20)
-TypeKind.FLOAT = TypeKind(21)
-TypeKind.DOUBLE = TypeKind(22)
-TypeKind.LONGDOUBLE = TypeKind(23)
-TypeKind.NULLPTR = TypeKind(24)
-TypeKind.OVERLOAD = TypeKind(25)
-TypeKind.DEPENDENT = TypeKind(26)
-TypeKind.OBJCID = TypeKind(27)
-TypeKind.OBJCCLASS = TypeKind(28)
-TypeKind.OBJCSEL = TypeKind(29)
-TypeKind.COMPLEX = TypeKind(100)
-TypeKind.POINTER = TypeKind(101)
-TypeKind.BLOCKPOINTER = TypeKind(102)
-TypeKind.LVALUEREFERENCE = TypeKind(103)
-TypeKind.RVALUEREFERENCE = TypeKind(104)
-TypeKind.RECORD = TypeKind(105)
-TypeKind.ENUM = TypeKind(106)
-TypeKind.TYPEDEF = TypeKind(107)
-TypeKind.OBJCINTERFACE = TypeKind(108)
-TypeKind.OBJCOBJECTPOINTER = TypeKind(109)
-TypeKind.FUNCTIONNOPROTO = TypeKind(110)
-TypeKind.FUNCTIONPROTO = TypeKind(111)
-TypeKind.CONSTANTARRAY = TypeKind(112)
-TypeKind.VECTOR = TypeKind(113)
+        if result is None:
+            raise ValueError('Unknown TypeKind: %d' % value)
+
+        return result
+
+    @staticmethod
+    def register(value, name):
+        """Registers a new TypeKind.
+
+        This should not be called outside of the module.
+        """
+        if value in TypeKind._value_map:
+            raise ValueError('TypeKind value already registered: %d' % value)
+
+        kind = TypeKind(value, name)
+        TypeKind._value_map[value] = kind
+        setattr(TypeKind, name, kind)
 
 class Type(object):
     """The type of an element in the abstract syntax tree."""
@@ -3113,6 +3069,9 @@ register_functions(lib)
 
 for name, value in enumerations.CursorKinds:
     CursorKind.register(value, name)
+
+for name, value in enumerations.TypeKinds:
+    TypeKind.register(value, name)
 
 __all__ = [
     'CodeCompletionResults',
