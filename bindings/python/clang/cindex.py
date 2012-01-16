@@ -2213,7 +2213,6 @@ class CXTUResourceUsage(Structure):
 
         return ret
 
-
 class TranslationUnit(ClangObject):
     """Represents a source code translation unit.
 
