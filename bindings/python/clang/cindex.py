@@ -546,7 +546,7 @@ class SourceLocation(object):
                 break
 
         if tu is None:
-            raise Exception('TranslationUnit not found when creating ' +
+            raise Exception('TranslationUnit not found when creating '
                              'SourceLocation.')
 
         return SourceLocation(structure=res, tu=tu)
@@ -686,7 +686,7 @@ class SourceRange(object):
                 break
 
         if tu is None:
-            raise Exception('TranslationUnit not found when creating ' +
+            raise Exception('TranslationUnit not found when creating '
                             'SourceRange.')
 
         return SourceRange(structure=res, tu=tu)
@@ -905,7 +905,7 @@ class CursorKind(object):
         if value >= len(CursorKind._kinds):
             CursorKind._kinds += [None] * (value - len(CursorKind._kinds) + 1)
         if CursorKind._kinds[value] is not None:
-            raise ValueError,'CursorKind already loaded'
+            raise ValueError('CursorKind already loaded')
         self.value = value
         CursorKind._kinds[value] = self
         CursorKind._name_map = None
@@ -926,7 +926,7 @@ class CursorKind(object):
     @staticmethod
     def from_id(value):
         if value >= len(CursorKind._kinds) or CursorKind._kinds[value] is None:
-            raise ValueError,'Unknown cursor kind'
+            raise ValueError('Unknown cursor kind')
         return CursorKind._kinds[value]
 
     @staticmethod
@@ -1991,7 +1991,7 @@ class TypeKind(object):
         if value >= len(TypeKind._kinds):
             TypeKind._kinds += [None] * (value - len(TypeKind._kinds) + 1)
         if TypeKind._kinds[value] is not None:
-            raise ValueError,'TypeKind already loaded'
+            raise ValueError('TypeKind already loaded')
         self.value = value
         TypeKind._kinds[value] = self
         TypeKind._name_map = None
@@ -2017,7 +2017,7 @@ class TypeKind(object):
     @staticmethod
     def from_id(value):
         if value >= len(TypeKind._kinds) or TypeKind._kinds[value] is None:
-            raise ValueError,'Unknown type kind %d' % value
+            raise ValueError('Unknown type kind %d' % value)
         return TypeKind._kinds[value]
 
     def __repr__(self):
@@ -2281,7 +2281,7 @@ class TokenKind(object):
         if value >= len(TokenKind._kinds):
             TokenKind._kinds += [None] * (value - len(TokenKind._kinds) + 1)
         if TokenKind._kinds[value] is not None:
-            raise ValueError,'TokenKind already loaded'
+            raise ValueError('TokenKind already loaded')
         self.value = value
         TokenKind._kinds[value] = self
         TokenKind._name_map = None
@@ -2303,7 +2303,7 @@ class TokenKind(object):
     @staticmethod
     def from_id(value):
         if value >= len(TokenKind._kinds) or TokenKind._kinds[value] is None:
-            raise ValueError,'Unknown token kind %d' % value
+            raise ValueError('Unknown token kind %d' % value)
         return TokenKind._kinds[value]
 
     def __repr__(self):
@@ -2936,7 +2936,7 @@ class TranslationUnit(ClangObject):
                     value = value.read()
                     print value
                 if not isinstance(value, str):
-                    raise TypeError,'Unexpected unsaved file contents.'
+                    raise TypeError('Unexpected unsaved file contents.')
                 unsaved_files_array[i].name = name
                 unsaved_files_array[i].contents = value
                 unsaved_files_array[i].length = len(value)
@@ -2987,7 +2987,7 @@ class TranslationUnit(ClangObject):
                     value = value.read()
                     print value
                 if not isinstance(value, str):
-                    raise TypeError,'Unexpected unsaved file contents.'
+                    raise TypeError('Unexpected unsaved file contents.')
                 unsaved_files_array[i].name = name
                 unsaved_files_array[i].contents = value
                 unsaved_files_array[i].length = len(value)
