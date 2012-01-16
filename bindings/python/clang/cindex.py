@@ -140,11 +140,6 @@ Known Issues and Limitations
 # TODO
 # ====
 #
-# o implement additional SourceLocation and SourceRange methods.
-#
-# o implement clang_getExpansionLocation, clang_getPresumedLocation, and
-#   clang_getSpellingLocation.
-#
 # o implement clang_loadDiagnostics.
 #
 # o Expose CXLinkageKind, CXLanguageKind, and CXAvailabilityKind for cursors.
@@ -275,8 +270,12 @@ class SourceLocation(object):
     A SourceLocation points to specific character within a file. The character
     can be addressed by its file character offset or by a line-column pair.
 
-    Locations can also refer to other locations. For example, for a
-    macro-expanded location, you can get the location of the original macro.
+    Each location comes in 3 different flavors: expansion, presumed, and
+    spelling. These are exposed through the expansion_location,
+    presumed_location, and spelling_location properties, respectively.
+
+    The file, line, column, and offset properties access the expansion
+    location.
     """
 
     class CXSourceLocation(Structure):
@@ -292,6 +291,8 @@ class SourceLocation(object):
 
     __slots__ = (
         '_expansion',
+        '_presumed',
+        '_spelling',
         '_struct',
         '_tu',
     )
@@ -355,6 +356,8 @@ class SourceLocation(object):
             assert offset >= 0
 
         self._expansion = None
+        self._presumed = None
+        self._spelling = None
 
         if structure is not None:
             assert tu is not None
@@ -390,7 +393,7 @@ class SourceLocation(object):
         raise Exception('No construction sources defined.')
 
     @property
-    def expansion(self):
+    def expansion_location(self):
         """Get a 4-tuple of the expansion location of this location.
 
         The returned tuple has fields (file, line, column, offset). file
@@ -422,27 +425,71 @@ class SourceLocation(object):
         return SourceLocation_getLocationForOffset(tu, file, offset)
 
     @property
+    def presumed_location(self):
+        """Get a 3-tuple representing the presumed location of this location.
+
+        The returned tuple has fields (file, line, column). file is a File
+        instance and the others are ints.
+        """
+        if self._presumed is None:
+            f = c_object_p()
+            line, column = c_uint(), c_uint()
+
+            lib.clang_getPresumedLocation(self._struct, byref(f), byref(line),
+                                          byref(column))
+
+            if not f:
+                raise Exception('Could not resolve SourceLocation.')
+
+            self._presumed = (File(f), int(line.value), int(column.value))
+
+        return self._presumed
+
+    @property
+    def spelling_location(self):
+        """Get a 4-tuple representing the location of the spelling for this
+        location.
+
+        The returned tuple has fields (file, line, column, offset). file is a
+        File instance and the others are ints.
+        """
+        if self._spelling is None:
+            f = c_object_p()
+            line, column, offset = c_uint, c_uint(), c_uint()
+
+            lib.clang_getSpellingLocation(self._struct, byref(f), byref(line),
+                                          byref(column), byref(offset))
+
+            if not f:
+                raise Exception('Could not resolve SourceLocation.')
+
+            self._spelling = (File(f), int(line.value), int(column.value),
+                              int(offset.value))
+
+        return self._spelling
+
+    @property
     def file(self):
         """Get the file represented by this source location.
 
         Returns a File instance.
         """
-        return self.expansion[0]
+        return self.expansion_location[0]
 
     @property
     def line(self):
         """Get the line number represented by this source location."""
-        return self.expansion[1]
+        return self.expansion_location[1]
 
     @property
     def column(self):
         """Get the column represented by this source location."""
-        return self.expansion[2]
+        return self.expansion_location[2]
 
     @property
     def offset(self):
         """Get the file offset represented by this source location."""
-        return self.expansion[3]
+        return self.expansion_location[3]
 
     @property
     def translation_unit(self):
@@ -3335,6 +3382,13 @@ def register_functions(lib):
     lib.clang_getPointeeType.restype = Type.CXType
     lib.clang_getPointeeType.errcheck = Type.from_struct
 
+    lib.clang_getPresumedLocation.argtypes = [SourceLocation.CXSourceLocation,
+                                              POINTER(c_object_p),
+                                              POINTER(c_uint),
+                                              POINTER(c_uint),
+                                              POINTER(c_uint)]
+    lib.clang_getPresumedLocation.restype = None
+
     lib.clang_getRange.argtypes = [SourceLocation.CXSourceLocation,
                                    SourceLocation.CXSourceLocation]
     lib.clang_getRange.restype = SourceRange.CXSourceRange
@@ -3355,6 +3409,13 @@ def register_functions(lib):
     lib.clang_getSpecializedCursorTemplate.argtypes = [Cursor.CXCursor]
     lib.clang_getSpecializedCursorTemplate.restype = Cursor.CXCursor
     lib.clang_getSpecializedCursorTemplate.errcheck = Cursor.from_struct
+
+    lib.clang_getSpellingLocation.argtypes = [SourceLocation.CXSourceLocation,
+                                              POINTER(c_object_p),
+                                              POINTER(c_uint),
+                                              POINTER(c_uint),
+                                              POINTER(c_uint)]
+    lib.clang_getSpellingLocation.restype = None
 
     lib.clang_getTemplateCursorKind.argtypes = [Cursor.CXCursor]
     lib.clang_getTemplateCursorKind.restype = c_uint
