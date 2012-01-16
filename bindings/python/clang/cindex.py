@@ -826,6 +826,10 @@ class CXXAccessSpecifier(object):
 
     These expose whether a cursor is public, protected, or private. If a cursor
     doesn't have an access level, its access level is defined as invalid.
+
+    Instances of this class are registered as static class members. e.g.
+    CXXAccessSpecifier.PUBLIC. To obtain an instance, get the static class
+    member or call CXXAccessSpecifier.from_value().
     """
 
     _levels = {}
@@ -833,15 +837,28 @@ class CXXAccessSpecifier(object):
     __slots__ = ('value', 'label')
 
     def __init__(self, value, label):
+        """Create a CXXAccessSpecifier type.
+
+        To retrieve an existing specifier (which is what you probably want to
+        do since access specifiers are static), call
+        CXXAccessSpecifier.from_value() instead.
+        """
         if value in self._levels:
             raise ValueError(value)
 
         self.value = value
         self.label = label
+
+        # Register this instance.
         CXXAccessSpecifier._levels[value] = self
 
     @staticmethod
-    def from_id(value):
+    def from_value(value):
+        """Obtain a CXXAccessSpecifier from its numeric value.
+
+        This is what you should call to obtain an instance of an existing
+        CXXAccessSpecifier.
+        """
         result = CXXAccessSpecifier._levels.get(value, None)
         if result is None:
             raise ValueError(value)
@@ -849,9 +866,11 @@ class CXXAccessSpecifier(object):
         return result
 
     def __repr__(self):
+        """System representation of type."""
         return 'CXXAccessSpecifier.%s' % (self.label,)
 
     def __str__(self):
+        """How this specifier is typed in a source file."""
         return self.label
 
 CXXAccessSpecifier.INVALID = CXXAccessSpecifier(0, 'INVALID')
@@ -1756,8 +1775,9 @@ class Cursor(object):
         cursor.
         """
         if self._access_specifier is None:
-            self._access_specifier = CXXAccessSpecifier.from_id(
+            self._access_specifier = CXXAccessSpecifier.from_value(
                 lib.clang_getCXXAccessSpecifier(self._struct))
+
         return self._access_specifier
 
     @property
