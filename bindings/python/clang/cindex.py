@@ -140,7 +140,10 @@ Known Issues and Limitations
 # TODO
 # ====
 #
-# o implement clang_loadDiagnostics.
+# o Implement clang_loadDiagnostics. This will involve supporting
+#   CXDiagnosticSet. This will also require some hackery with Diagnostic since
+#   no TranslationUnit is available (derived objects will want to reference a
+#   TranslationUnit).
 #
 # o Expose CXLinkageKind, CXLanguageKind, and CXAvailabilityKind for cursors.
 #
