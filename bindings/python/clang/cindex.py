@@ -270,15 +270,16 @@ class _CXString(Structure):
 class SourceLocation(object):
     """Represents a particular location within a source file.
 
-    A SourceLocation points to specific character within a file. The character
-    can be addressed by its file character offset or by a line-column pair.
+    A SourceLocation refers to the position of an entity within a file. This
+    position can be addressed by its file character offset or by a line-column
+    pair.
 
     Each location comes in 3 different flavors: expansion, presumed, and
     spelling. These are exposed through the expansion_location,
     presumed_location, and spelling_location properties, respectively.
 
     The file, line, column, and offset properties access the expansion
-    location.
+    location and are provided as a convenience.
     """
 
     class CXSourceLocation(Structure):
@@ -322,6 +323,17 @@ class SourceLocation(object):
             except instead of passing line and column, pass offset.
 
         If multiple construction methods are passed, behavior is undefined.
+
+        When requesting a location by file location, the returned location may
+        represent a different location from the one requested. The rules are as
+        follows:
+
+          * If a location past the end of file is requested, the returned
+            location represents the actual end of the file.
+
+          * If the location is in the middle of a AST cursor, the location
+            location corresponding with the first character in that cursor's
+            source range is returned.
 
         Arugments:
 
@@ -458,7 +470,7 @@ class SourceLocation(object):
         """
         if self._spelling is None:
             f = c_object_p()
-            line, column, offset = c_uint, c_uint(), c_uint()
+            line, column, offset = c_uint(), c_uint(), c_uint()
 
             lib.clang_getSpellingLocation(self._struct, byref(f), byref(line),
                                           byref(column), byref(offset))
@@ -3407,7 +3419,6 @@ def register_functions(lib):
 
     lib.clang_getPresumedLocation.argtypes = [SourceLocation.CXSourceLocation,
                                               POINTER(c_object_p),
-                                              POINTER(c_uint),
                                               POINTER(c_uint),
                                               POINTER(c_uint)]
     lib.clang_getPresumedLocation.restype = None
