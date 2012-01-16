@@ -879,7 +879,7 @@ class CXXAccessSpecifier(object):
 
     def __repr__(self):
         """System representation of type."""
-        return 'CXXAccessSpecifier.%s' % (self.label,)
+        return 'CXXAccessSpecifier.%s' % self.label.upper()
 
     def __str__(self):
         """How this specifier is typed in a source file."""
