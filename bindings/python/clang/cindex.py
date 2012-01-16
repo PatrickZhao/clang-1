@@ -999,9 +999,6 @@ class CursorKind(object):
         CursorKind._value_map[value] = kind
         setattr(CursorKind, name, kind)
 
-for name, value in enumerations.CursorKinds:
-    CursorKind.register(value, name)
-
 class Cursor(object):
     """An element with the abstract syntax tree of a translation unit.
 
@@ -3113,6 +3110,9 @@ def register_functions(lib):
     lib.clang_visitChildren.restype = c_uint
 
 register_functions(lib)
+
+for name, value in enumerations.CursorKinds:
+    CursorKind.register(value, name)
 
 __all__ = [
     'CodeCompletionResults',
