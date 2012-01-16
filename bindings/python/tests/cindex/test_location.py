@@ -133,7 +133,7 @@ def test_repr():
 
     loc = SourceLocation(source='t.c', tu=tu, line=1, column=1)
 
-    assert loc.__repr__() == "<SourceLocation file 't.c', line 1, column 1>"
+    assert repr(loc) == "<SourceLocation file 't.c', line 1, column 1>"
 
 def test_location():
     tu = get_tu(baseInput)
