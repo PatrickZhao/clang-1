@@ -2150,43 +2150,42 @@ class Index(ClangObject):
 class ResourceUsageKind(object):
     """Represents a kind of resource usage."""
 
-    __slots__ = ('id', '_name')
+    _value_map = {}
 
-    def __init__(self, value):
-        assert value in ResourceUsageKind._kinds
-        self.id = value
-        self._name = None
+    __slots__ = (
+        'name',
+        'value',
+    )
 
-    @property
-    def name(self):
-        """The string name of this kind."""
-        if self._name is None:
-            self._name = lib.clang_getTUResourceUsageName(self.id)
+    def __init__(self, value, name):
+        """Create a new resource usage kind instance.
 
-        return self._name
+        Since ResourceUsageKinds are static, this should only be done at
+        module load time. i.e. you should not create new instances outside of
+        this module.
+        """
+        self.value = value
+        self.name = name
+
+    @staticmethod
+    def from_value(value):
+        """Obtain a ResourceUsageKind from its numeric value."""
+        result = ResourceUsageKind._value_map.get(value, None)
+
+        if result is None:
+            raise ValueError('Unknown ResourceUsageKind enumeration: %d' %
+                    value)
+
+        return result
 
     @staticmethod
     def register(value, name):
-        ResourceUsageKind._kinds[value] = name
+        kind = ResourceUsageKind(value, name)
+        ResourceUsageKind._value_map[value] = kind
+        setattr(ResourceUsageKind, name, kind)
 
     def __repr__(self):
-        return 'ResourceUsageKind.%s' % ResourceUsageKind._kinds[self.id]
-
-ResourceUsageKind._kinds = {}
-ResourceUsageKind.register(1, 'AST')
-ResourceUsageKind.register(2, 'Identifiers')
-ResourceUsageKind.register(3, 'Selectors')
-ResourceUsageKind.register(4, 'GlobalCompletionResults')
-ResourceUsageKind.register(5, 'SourceManagerContentCache')
-ResourceUsageKind.register(6, 'ASTSideTables')
-ResourceUsageKind.register(7, 'SourceManagerMalloc')
-ResourceUsageKind.register(8, 'SourceManagerMMap')
-ResourceUsageKind.register(9, 'ExternalASTSourceMalloc')
-ResourceUsageKind.register(10, 'ExternalASTSourceMMap')
-ResourceUsageKind.register(11, 'Preprocessor')
-ResourceUsageKind.register(12, 'PreprocessingRecord')
-ResourceUsageKind.register(13, 'SourceManagerDataStructures')
-ResourceUsageKind.register(14, 'PreprocessorHeaderSearch')
+        return 'ResourceUsageKind.%s' % self.name
 
 class CXTUResourceUsage(Structure):
     """Represents a raw CXTUResourceUsage struct."""
@@ -2210,7 +2209,7 @@ class CXTUResourceUsage(Structure):
 
         ret = {}
         for entry in p:
-            ret[ResourceUsageKind(entry.kind)] = entry.amount
+            ret[ResourceUsageKind.from_value(entry.kind)] = entry.amount
 
         return ret
 
@@ -3072,6 +3071,9 @@ for name, value in enumerations.CursorKinds:
 
 for name, value in enumerations.TypeKinds:
     TypeKind.register(value, name)
+
+for value, name in enumerations.ResourceUsageKinds:
+    ResourceUsageKind.register(value, name)
 
 __all__ = [
     'CodeCompletionResults',

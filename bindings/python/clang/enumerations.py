@@ -539,7 +539,24 @@ TypeKinds = [
     ('VECTOR', 113),
 ]
 
+ResourceUsageKinds = [
+    (1, 'AST'),
+    (2, 'Identifiers'),
+    (3, 'Selectors'),
+    (4, 'GlobalCompletionResults'),
+    (5, 'SourceManagerContentCache'),
+    (6, 'ASTSideTables'),
+    (7, 'SourceManagerMalloc'),
+    (8, 'SourceManagerMMap'),
+    (9, 'ExternalASTSourceMalloc'),
+    (10, 'ExternalASTSourceMMap'),
+    (11, 'Preprocessor'),
+    (12, 'PreprocessingRecord'),
+    (13, 'SourceManagerDataStructures'),
+    (14, 'PreprocessorHeaderSearch'),
+]
 __all__ = [
     'CursorKinds',
+    'ResourceUsageKinds',
     'TypeKinds',
 ]
