@@ -30,12 +30,11 @@ Some of the changes over the raw libclang API include:
  * Callbacks are exposed as iterators.
 
 A major feature of this binding over libclang is automatic memory management.
-This binding stores references to their creating object in generated objects
-automatically. While Python's object destructors will call libclang to dispose
-of the object automatically, derived objects have references retained in their
-children, so the parent object will have an object lifetime no shorter than all
-of the children. If you experience crashes due to objects being improperly
-disposed, please file a bug!
+When an object is unreferenced, its libclang disposal function is called
+automatically by the Python destructor. When objects are created from other
+objects, a reference to the parent object is retained in the child so the
+parent object will only be destroyed after all children are destroyed. If you
+experience crashes due to objects being improperly disposed, please file a bug!
 
 Class Overview
 --------------
@@ -94,6 +93,14 @@ Known Issues and Limitations
   clang_getNullCursor() without having an Index *somewhere*, you may see a
   crash.
 
+* No guarantees on when a destructor is called. Even though an object is a
+  candidate for collection because of no remaining references, the destructor
+  (__del__) may not be called for a while. This typically isn't an issue for
+  short-lived processes. However, if you are using this module inside a long-
+  lived process (minutes or greater) or if you are using many different
+  translation units, you may wish to explicitly 'del obj' and force a garbage
+  collection via the Python built-in 'gc' module to work around this.
+
 """
 
 # Developer Notes
@@ -102,7 +109,8 @@ Known Issues and Limitations
 # Class Types
 # -----------
 #
-# Each class in this module belongs in one of the following buckets:
+# Each class in this module can effectively be classified as one of the
+# following:
 #
 #  * Enumeration representation (CursorKind, TokenKind, etc)
 #  * libclang object representation (Cursor, Token, SourceLocation, etc)
@@ -111,13 +119,19 @@ Known Issues and Limitations
 # Enumeration Classes
 # -------------------
 #
-# Enumeration classes represent enumerations defined in libclang. There are
-# 2 parts to each enumeration class: 1) container for registered instances
-# 2) individual instances of each enumeration.
+# Enumeration classes represent enumerations defined in libclang.
 #
-# Currently, both share the same Python class. Stuffed inside each class is a
-# static variable holding all registered classes. These are available from
-# module scope. e.g. CursorKind.CLASS_DECL.
+# Instances of each enumeration class represent a specific enumerated value.
+# At the minimum, each instance exposes its numeric/enumerated value and a
+# string name or label. Some classes (like CursorKind) expose additional
+# metadata. Each instance should be treated as a read-only static variable.
+#
+# Each enumeration class contains a static object which holds a mapping of
+# values to class instances. This object is populated at module load time
+# by calling the register() static method on the class.
+#
+# Each class also contains attributes that allow enumeration instances to be
+# accessed by their name. e.g. CursorKind.CLASS_DECL.
 #
 # Ideally, we'd define each enumeration as a simple int. However, useful
 # information is attached to different enumerations. e.g.
