@@ -312,10 +312,13 @@ class CachedProperty(object):
 
         return value
 
-class _CXString(Structure):
+class CXString(Structure):
     """Helper for transforming CXString results."""
 
-    _fields_ = [("spelling", c_char_p), ("free", c_int)]
+    _fields_ = [
+        ('spelling', c_char_p),
+        ('free', c_int)
+    ]
 
     def __del__(self):
         lib.clang_disposeString(self)
@@ -326,7 +329,7 @@ class _CXString(Structure):
 
         This converts the CXString struct into a Python string.
         """
-        assert isinstance(res, _CXString)
+        assert isinstance(res, CXString)
         return lib.clang_getCString(res)
 
 class SourceLocation(object):
@@ -828,7 +831,7 @@ class Diagnostic(object):
     @property
     def disable_option(self):
         """The command-line option that disables this diagnostic."""
-        disable = _CXString()
+        disable = CXString()
         lib.clang_getDiagnosticOption(self, byref(disable))
 
         return lib.clang_getCString(disable)
@@ -2574,7 +2577,7 @@ def register_functions(lib):
 
     lib.clang_disposeIndex.argtypes = [Index]
 
-    lib.clang_disposeString.argtypes = [_CXString]
+    lib.clang_disposeString.argtypes = [CXString]
 
     lib.clang_disposeTokens.argtype = [TranslationUnit, POINTER(Token.CXToken),
                                       c_uint]
@@ -2624,12 +2627,12 @@ def register_functions(lib):
     lib.clang_getCompletionChunkKind.restype = c_int
 
     lib.clang_getCompletionChunkText.argtypes = [c_void_p, c_int]
-    lib.clang_getCompletionChunkText.restype = _CXString
+    lib.clang_getCompletionChunkText.restype = CXString
 
     lib.clang_getCompletionPriority.argtypes = [c_void_p]
     lib.clang_getCompletionPriority.restype = c_int
 
-    lib.clang_getCString.argtypes = [_CXString]
+    lib.clang_getCString.argtypes = [CXString]
     lib.clang_getCString.restype = c_char_p
 
     lib.clang_getCursor.argtypes = [TranslationUnit,
@@ -2643,8 +2646,8 @@ def register_functions(lib):
     lib.clang_getCursorDefinition.errcheck = Cursor.from_struct
 
     lib.clang_getCursorDisplayName.argtypes = [Cursor.CXCursor]
-    lib.clang_getCursorDisplayName.restype = _CXString
-    lib.clang_getCursorDisplayName.errcheck = _CXString.from_result
+    lib.clang_getCursorDisplayName.restype = CXString
+    lib.clang_getCursorDisplayName.errcheck = CXString.from_result
 
     lib.clang_getCursorExtent.argtypes = [Cursor.CXCursor]
     lib.clang_getCursorExtent.restype = SourceRange.CXSourceRange
@@ -2672,16 +2675,16 @@ def register_functions(lib):
     lib.clang_getCursorSemanticParent.errcheck = Cursor.from_struct
 
     lib.clang_getCursorSpelling.argtypes = [Cursor.CXCursor]
-    lib.clang_getCursorSpelling.restype = _CXString
-    lib.clang_getCursorSpelling.errcheck = _CXString.from_result
+    lib.clang_getCursorSpelling.restype = CXString
+    lib.clang_getCursorSpelling.errcheck = CXString.from_result
 
     lib.clang_getCursorType.argtypes = [Cursor.CXCursor]
     lib.clang_getCursorType.restype = Type.CXType
     lib.clang_getCursorType.errcheck = Type.from_struct
 
     lib.clang_getCursorUSR.argtypes = [Cursor.CXCursor]
-    lib.clang_getCursorUSR.restype = _CXString
-    lib.clang_getCursorUSR.errcheck = _CXString.from_result
+    lib.clang_getCursorUSR.restype = CXString
+    lib.clang_getCursorUSR.errcheck = CXString.from_result
 
     lib.clang_getCXTUResourceUsage.argtypes = [TranslationUnit]
     lib.clang_getCXTUResourceUsage.restype = CXTUResourceUsage
@@ -2690,8 +2693,8 @@ def register_functions(lib):
     lib.clang_getCXXAccessSpecifier.restype = c_uint
 
     lib.clang_getDeclObjCTypeEncoding.argtypes = [Cursor.CXCursor]
-    lib.clang_getDeclObjCTypeEncoding.restype = _CXString
-    lib.clang_getDeclObjCTypeEncoding.errcheck = _CXString.from_result
+    lib.clang_getDeclObjCTypeEncoding.restype = CXString
+    lib.clang_getDeclObjCTypeEncoding.errcheck = CXString.from_result
 
     lib.clang_getDiagnostic.argtypes = [c_object_p, c_uint]
     lib.clang_getDiagnostic.restype = c_object_p
@@ -2700,13 +2703,13 @@ def register_functions(lib):
     lib.clang_getDiagnosticCategory.restype = c_uint
 
     lib.clang_getDiagnosticCategoryName.argtypes = [c_uint]
-    lib.clang_getDiagnosticCategoryName.restype = _CXString
-    lib.clang_getDiagnosticCategoryName.errcheck = _CXString.from_result
+    lib.clang_getDiagnosticCategoryName.restype = CXString
+    lib.clang_getDiagnosticCategoryName.errcheck = CXString.from_result
 
     lib.clang_getDiagnosticFixIt.argtypes = [Diagnostic, c_uint,
             POINTER(SourceRange.CXSourceRange)]
-    lib.clang_getDiagnosticFixIt.restype = _CXString
-    lib.clang_getDiagnosticFixIt.errcheck = _CXString.from_result
+    lib.clang_getDiagnosticFixIt.restype = CXString
+    lib.clang_getDiagnosticFixIt.errcheck = CXString.from_result
 
     lib.clang_getDiagnosticLocation.argtypes = [Diagnostic]
     lib.clang_getDiagnosticLocation.restype = SourceLocation.CXSourceLocation
@@ -2718,9 +2721,9 @@ def register_functions(lib):
     lib.clang_getDiagnosticNumRanges.argtypes = [Diagnostic]
     lib.clang_getDiagnosticNumRanges.restype = c_uint
 
-    lib.clang_getDiagnosticOption.argtypes = [Diagnostic, POINTER(_CXString)]
-    lib.clang_getDiagnosticOption.restype = _CXString
-    lib.clang_getDiagnosticOption.errcheck = _CXString.from_result
+    lib.clang_getDiagnosticOption.argtypes = [Diagnostic, POINTER(CXString)]
+    lib.clang_getDiagnosticOption.restype = CXString
+    lib.clang_getDiagnosticOption.errcheck = CXString.from_result
 
     lib.clang_getDiagnosticRange.argtypes = [Diagnostic, c_uint]
     lib.clang_getDiagnosticRange.restype = SourceRange.CXSourceRange
@@ -2730,8 +2733,8 @@ def register_functions(lib):
     lib.clang_getDiagnosticSeverity.restype = c_int
 
     lib.clang_getDiagnosticSpelling.argtypes = [Diagnostic]
-    lib.clang_getDiagnosticSpelling.restype = _CXString
-    lib.clang_getDiagnosticSpelling.errcheck = _CXString.from_result
+    lib.clang_getDiagnosticSpelling.restype = CXString
+    lib.clang_getDiagnosticSpelling.errcheck = CXString.from_result
 
     lib.clang_getElementType.argtypes = [Type.CXType]
     lib.clang_getElementType.restype = Type.CXType
@@ -2750,8 +2753,8 @@ def register_functions(lib):
     lib.clang_getFile.restype = c_object_p
 
     lib.clang_getFileName.argtypes = [File]
-    lib.clang_getFileName.restype = _CXString
-    lib.clang_getFileName.errcheck = _CXString.from_result
+    lib.clang_getFileName.restype = CXString
+    lib.clang_getFileName.errcheck = CXString.from_result
 
     lib.clang_getFileTime.argtypes = [File]
     lib.clang_getFileTime.restype = c_uint
@@ -2851,16 +2854,16 @@ def register_functions(lib):
     lib.clang_getTokenLocation.errcheck = SourceLocation.from_struct
 
     lib.clang_getTokenSpelling.argtype = [TranslationUnit, Token.CXToken]
-    lib.clang_getTokenSpelling.restype = _CXString
-    lib.clang_getTokenSpelling.errcheck = _CXString.from_result
+    lib.clang_getTokenSpelling.restype = CXString
+    lib.clang_getTokenSpelling.errcheck = CXString.from_result
 
     lib.clang_getTranslationUnitCursor.argtypes = [TranslationUnit]
     lib.clang_getTranslationUnitCursor.restype = Cursor.CXCursor
     lib.clang_getTranslationUnitCursor.errcheck = Cursor.from_struct
 
     lib.clang_getTranslationUnitSpelling.argtypes = [TranslationUnit]
-    lib.clang_getTranslationUnitSpelling.restype = _CXString
-    lib.clang_getTranslationUnitSpelling.errcheck = _CXString.from_result
+    lib.clang_getTranslationUnitSpelling.restype = CXString
+    lib.clang_getTranslationUnitSpelling.errcheck = CXString.from_result
 
     lib.clang_getTUResourceUsageName.argtypes = [c_uint]
     lib.clang_getTUResourceUsageName.restype = c_char_p
@@ -2874,8 +2877,8 @@ def register_functions(lib):
     lib.clang_getTypedefDeclUnderlyingType.errcheck = Type.from_struct
 
     lib.clang_getTypeKindSpelling.argtypes = [c_uint]
-    lib.clang_getTypeKindSpelling.restype = _CXString
-    lib.clang_getTypeKindSpelling.errcheck = _CXString.from_result
+    lib.clang_getTypeKindSpelling.restype = CXString
+    lib.clang_getTypeKindSpelling.errcheck = CXString.from_result
 
     lib.clang_hashCursor.argtypes = [Cursor.CXCursor]
     lib.clang_hashCursor.restype = c_uint
