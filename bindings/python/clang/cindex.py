@@ -294,6 +294,8 @@ class CachedProperty(object):
     The first time the property is accessed, the original property function is
     executed. The value it returns is set as the new value of that instance's
     property, replacing the original method.
+
+    This does not work on classes using __slots__.
     """
 
     def __init__(self, wrapped):
@@ -313,6 +315,9 @@ class CachedProperty(object):
         return value
 
 ### Structure Classes ###
+
+# Classes in this section effectively define the libclang C types in Python.
+# They should not be used outside of this module.
 
 class CXString(Structure):
     """Helper for transforming CXString results."""
@@ -350,13 +355,46 @@ class ClangObject(object):
     def from_param(self):
         return self._as_parameter_
 
-class _CXUnsavedFile(Structure):
+class CXUnsavedFile(Structure):
     """Helper for passing unsaved file arguments."""
     _fields_ = [
         ('name', c_char_p),
         ('contents', c_char_p),
         ('length', c_ulong)
     ]
+
+class CXTUResourceUsage(Structure):
+    """Represents a raw CXTUResourceUsage struct."""
+
+    _fields_ = [
+        ('data', c_void_p),
+        ('number', c_uint),
+        ('entries', c_void_p)
+    ]
+
+    class CXTUResourceUsageEntry(Structure):
+        _fields_ = [
+            ('kind', c_uint),
+            ('amount', c_ulong)
+        ]
+
+    def __del__(self):
+        lib.clang_disposeCXTUResourceUsage(self)
+
+    def to_dict(self):
+        """Converts the structure to a dictionary.
+
+        Keys in the dictionary are ResourceUsageKind instances and values are
+        the numeric value for that kind.
+        """
+        p_type = POINTER(CXTUResourceUsage.CXTUResourceUsageEntry * self.number)
+        p = cast(self.entries, p_type).contents
+
+        ret = {}
+        for entry in p:
+            ret[ResourceUsageKind.from_value(entry.kind)] = entry.amount
+
+        return ret
 
 ### Classes Defining Enumerations ###
 
@@ -2127,32 +2165,6 @@ class Index(ClangObject):
         return TranslationUnit.from_source(path, args, unsaved_files, options,
                                            self)
 
-class CXTUResourceUsage(Structure):
-    """Represents a raw CXTUResourceUsage struct."""
-
-    _fields_ = [('data', c_void_p),('number', c_uint),('entries', c_void_p)]
-
-    class CXTUResourceUsageEntry(Structure):
-        _fields_ = [('kind', c_uint), ('amount', c_ulong)]
-
-    def __del__(self):
-        lib.clang_disposeCXTUResourceUsage(self)
-
-    def to_dict(self):
-        """Converts the structure to a dictionary.
-
-        Keys in the dictionary are ResourceUsageKind instances and values are
-        the numeric value for that kind.
-        """
-        p_type = POINTER(CXTUResourceUsage.CXTUResourceUsageEntry * self.number)
-        p = cast(self.entries, p_type).contents
-
-        ret = {}
-        for entry in p:
-            ret[ResourceUsageKind.from_value(entry.kind)] = entry.amount
-
-        return ret
-
 class TranslationUnit(ClangObject):
     """Represents a source code translation unit.
 
@@ -2245,7 +2257,7 @@ class TranslationUnit(ClangObject):
 
         unsaved_array = None
         if len(unsaved_files) > 0:
-            unsaved_array = (_CXUnsavedFile * len(unsaved_files))()
+            unsaved_array = (CXUnsavedFile * len(unsaved_files))()
             for i, (name, contents) in enumerate(unsaved_files):
                 if hasattr(contents, "read"):
                     contents = contents.read()
@@ -2365,7 +2377,7 @@ class TranslationUnit(ClangObject):
 
         unsaved_files_array = 0
         if len(unsaved_files):
-            unsaved_files_array = (_CXUnsavedFile * len(unsaved_files))()
+            unsaved_files_array = (CXUnsavedFile * len(unsaved_files))()
             for i, (name, value) in enumerate(unsaved_files):
                 if not isinstance(value, str):
                     # FIXME: It would be great to support an efficient version
@@ -2416,7 +2428,7 @@ class TranslationUnit(ClangObject):
 
         unsaved_files_array = 0
         if len(unsaved_files):
-            unsaved_files_array = (_CXUnsavedFile * len(unsaved_files))()
+            unsaved_files_array = (CXUnsavedFile * len(unsaved_files))()
             for i, (name, value) in enumerate(unsaved_files):
                 if not isinstance(value, str):
                     # FIXME: It would be great to support an efficient version
