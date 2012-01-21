@@ -853,15 +853,11 @@ class CXXAccessSpecifier(object):
 
     These expose whether a cursor is public, protected, or private. If a cursor
     doesn't have an access level, its access level is defined as invalid.
-
-    Instances of this class are registered as static class members. e.g.
-    CXXAccessSpecifier.PUBLIC. To obtain an instance, get the static class
-    member or call CXXAccessSpecifier.from_value().
     """
 
-    _levels = {}
-
     __slots__ = ('value', 'label')
+
+    _value_map = {}
 
     def __init__(self, value, label):
         """Create a CXXAccessSpecifier type.
@@ -870,14 +866,16 @@ class CXXAccessSpecifier(object):
         do since access specifiers are static), call
         CXXAccessSpecifier.from_value() instead.
         """
-        if value in self._levels:
-            raise ValueError(value)
-
         self.value = value
         self.label = label
 
-        # Register this instance.
-        CXXAccessSpecifier._levels[value] = self
+    def __str__(self):
+        """How this specifier is typed in a source file."""
+        return self.label
+
+    def __repr__(self):
+        """System representation of type."""
+        return 'CXXAccessSpecifier.%s' % self.label.upper()
 
     @staticmethod
     def from_value(value):
@@ -886,24 +884,25 @@ class CXXAccessSpecifier(object):
         This is what you should call to obtain an instance of an existing
         CXXAccessSpecifier.
         """
-        result = CXXAccessSpecifier._levels.get(value, None)
+        result = CXXAccessSpecifier._value_map.get(value, None)
         if result is None:
-            raise ValueError(value)
+            raise ValueError('CXXAccessSpecifier not registered: %d' % value)
 
         return result
 
-    def __repr__(self):
-        """System representation of type."""
-        return 'CXXAccessSpecifier.%s' % self.label.upper()
+    @staticmethod
+    def register(value, label):
+        """Registers a CXXAccessSpecifier enumeration.
 
-    def __str__(self):
-        """How this specifier is typed in a source file."""
-        return self.label
+        This should only be called at module load time.
+        """
+        if value in CXXAccessSpecifier._value_map:
+            raise ValueError('CXXAccessSPecifier already registered: %d' %
+                    value)
 
-CXXAccessSpecifier.INVALID = CXXAccessSpecifier(0, 'INVALID')
-CXXAccessSpecifier.PUBLIC = CXXAccessSpecifier(1, 'public')
-CXXAccessSpecifier.PROTECTED = CXXAccessSpecifier(2, 'protected')
-CXXAccessSpecifier.PRIVATE = CXXAccessSpecifier(3, 'private')
+        spec = CXXAccessSpecifier(value, label)
+        CXXAccessSpecifier._value_map[value] = spec
+        setattr(CXXAccessSpecifier, label.upper(), spec)
 
 class CursorKind(object):
     """Descriptor for the kind of entity that a cursor points to."""
@@ -2941,6 +2940,9 @@ register_functions(lib)
 
 for name, value in enumerations.CursorKinds:
     CursorKind.register(value, name)
+
+for label, value in enumerations.CXXAccessSpecifiers:
+    CXXAccessSpecifier.register(value, label)
 
 for name, value in enumerations.TokenKinds:
     TokenKind.register(value, name)

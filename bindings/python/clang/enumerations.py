@@ -492,6 +492,13 @@ CursorKinds = [
 
 ]
 
+CXXAccessSpecifiers = [
+    ('INVALID', 0),
+    ('public', 1),
+    ('protected', 2),
+    ('private', 3),
+]
+
 TokenKinds = [
     ('PUNCTUATION', 0),
     ('KEYWORD', 1),
@@ -565,6 +572,7 @@ ResourceUsageKinds = [
 ]
 __all__ = [
     'CursorKinds',
+    'CXXAccessSpecifiers',
     'ResourceUsageKinds',
     'TokenKinds',
     'TypeKinds',
