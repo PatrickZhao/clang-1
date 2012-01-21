@@ -274,6 +274,30 @@ class TranslationUnitSaveError(Exception):
 
 ### Structures and Utility Classes ###
 
+class CachedProperty(object):
+    """Decorator that lazy-loads the value of a property.
+
+    The first time the property is accessed, the original property function is
+    executed. The value it returns is set as the new value of that instance's
+    property, replacing the original method.
+    """
+
+    def __init__(self, wrapped):
+        self.wrapped = wrapped
+        try:
+            self.__doc__ = wrapped.__doc__
+        except:
+            pass
+
+    def __get__(self, instance, instance_type=None):
+        if instance is None:
+            return self
+
+        value = self.wrapped(instance)
+        setattr(instance, self.wrapped.__name__, value)
+
+        return value
+
 class _CXString(Structure):
     """Helper for transforming CXString results."""
 
@@ -316,14 +340,6 @@ class SourceLocation(object):
             ('ptr_data', c_void_p * 2),
             ('int_data', c_uint)
         ]
-
-    __slots__ = (
-        '_expansion',
-        '_presumed',
-        '_spelling',
-        '_struct',
-        '_tu',
-    )
 
     def __init__(self,
                  structure=None,
@@ -394,10 +410,6 @@ class SourceLocation(object):
         if offset is not None:
             assert offset >= 0
 
-        self._expansion = None
-        self._presumed = None
-        self._spelling = None
-
         if structure is not None:
             assert tu is not None
             self._struct = structure
@@ -431,60 +443,43 @@ class SourceLocation(object):
 
         raise Exception('No construction sources defined.')
 
-    @property
+    @CachedProperty
     def expansion_location(self):
         """Get a 4-tuple of the expansion location of this location.
 
         The returned tuple has fields (file, line, column, offset). file
         is a File instance and the rest of the arguments are ints.
         """
-        if self._expansion is None:
-            f = c_object_p()
-            line, column, offset = c_uint(), c_uint(), c_uint()
+        f = c_object_p()
+        line, column, offset = c_uint(), c_uint(), c_uint()
 
-            lib.clang_getExpansionLocation(self._struct, byref(f), byref(line),
-                                           byref(column), byref(offset))
+        lib.clang_getExpansionLocation(self._struct, byref(f), byref(line),
+                                       byref(column), byref(offset))
 
-            if not f:
-                raise Exception('Could not resolve SourceLocation.')
+        if not f:
+            raise Exception('Could not resolve SourceLocation.')
 
-            self._expansion = (File(f), int(line.value), int(column.value),
-                               int(offset.value))
+        return (File(f), int(line.value), int(column.value), int(offset.value))
 
-        return self._expansion
-
-    @staticmethod
-    def from_offset(tu, file, offset):
-        """Retrieve a SourceLocation from a given character offset.
-
-        tu -- TranslationUnit file belongs to
-        file -- File instance to obtain offset from
-        offset -- Integer character offset within file
-        """
-        return SourceLocation_getLocationForOffset(tu, file, offset)
-
-    @property
+    @CachedProperty
     def presumed_location(self):
         """Get a 3-tuple representing the presumed location of this location.
 
         The returned tuple has fields (file, line, column). file is a File
         instance and the others are ints.
         """
-        if self._presumed is None:
-            f = c_object_p()
-            line, column = c_uint(), c_uint()
+        f = c_object_p()
+        line, column = c_uint(), c_uint()
 
-            lib.clang_getPresumedLocation(self._struct, byref(f), byref(line),
-                                          byref(column))
+        lib.clang_getPresumedLocation(self._struct, byref(f), byref(line),
+                                      byref(column))
 
-            if not f:
-                raise Exception('Could not resolve SourceLocation.')
+        if not f:
+            raise Exception('Could not resolve SourceLocation.')
 
-            self._presumed = (File(f), int(line.value), int(column.value))
+        return (File(f), int(line.value), int(column.value))
 
-        return self._presumed
-
-    @property
+    @CachedProperty
     def spelling_location(self):
         """Get a 4-tuple representing the location of the spelling for this
         location.
@@ -492,20 +487,16 @@ class SourceLocation(object):
         The returned tuple has fields (file, line, column, offset). file is a
         File instance and the others are ints.
         """
-        if self._spelling is None:
-            f = c_object_p()
-            line, column, offset = c_uint(), c_uint(), c_uint()
+        f = c_object_p()
+        line, column, offset = c_uint(), c_uint(), c_uint()
 
-            lib.clang_getSpellingLocation(self._struct, byref(f), byref(line),
-                                          byref(column), byref(offset))
+        lib.clang_getSpellingLocation(self._struct, byref(f), byref(line),
+                                      byref(column), byref(offset))
 
-            if not f:
-                raise Exception('Could not resolve SourceLocation.')
+        if not f:
+            raise Exception('Could not resolve SourceLocation.')
 
-            self._spelling = (File(f), int(line.value), int(column.value),
-                              int(offset.value))
-
-        return self._spelling
+        return (File(f), int(line.value), int(column.value), int(offset.value))
 
     @property
     def file(self):
@@ -1017,24 +1008,6 @@ class Cursor(object):
             ('data', c_void_p * 3)
         ]
 
-    __slots__ = (
-        '_access_specifier',
-        '_canonical',
-        '_displayname',
-        '_enum_type',
-        '_extent',
-        '_hash',
-        '_location',
-        '_objc_type_encoding',
-        '_overloaded_decl_count',
-        '_referenced',
-        '_result_type',
-        '_spelling',
-        '_struct',
-        '_type',
-        '_underlying_type',
-    )
-
     def __init__(self, location=None, structure=None, tu=None):
         """Instantiate a cursor instance.
 
@@ -1052,21 +1025,6 @@ class Cursor(object):
 
         if tu is not None:
             assert isinstance(tu, TranslationUnit)
-
-        self._access_specifier = None
-        self._canonical = None
-        self._displayname = None
-        self._enum_type = None
-        self._extent = None
-        self._hash = None
-        self._location = None
-        self._objc_type_encoding = None
-        self._overloaded_decl_count = None
-        self._referenced = None
-        self._result_type = None
-        self._spelling = None
-        self._type = None
-        self._underlying_type = None
 
         if location is not None:
             tu = location.translation_unit
@@ -1172,7 +1130,7 @@ class Cursor(object):
         """
         return lib.clang_getSpecializedCursorTemplate(self._struct)
 
-    @property
+    @CachedProperty
     def spelling(self):
         """Return the spelling of the entity pointed at by the cursor."""
         if not self.kind.is_declaration():
@@ -1180,12 +1138,9 @@ class Cursor(object):
             # this, for consistency with clang_getCursorUSR.
             return None
 
-        if self._spelling is None:
-            self._spelling = lib.clang_getCursorSpelling(self._struct)
+        return lib.clang_getCursorSpelling(self._struct)
 
-        return self._spelling
-
-    @property
+    @CachedProperty
     def displayname(self):
         """
         Return the display name for the entity referenced by this cursor.
@@ -1194,55 +1149,40 @@ class Cursor(object):
         such as the parameters of a function or template or the arguments of a
         class template specialization.
         """
-        if self._displayname is None:
-            self._displayname = lib.clang_getCursorDisplayName(self._struct)
+        return lib.clang_getCursorDisplayName(self._struct)
 
-        return self._displayname
-
-    @property
+    @CachedProperty
     def location(self):
         """
         Return the source location (the starting character) of the entity
         pointed at by the cursor.
         """
-        if self._location is None:
-            self._location = lib.clang_getCursorLocation(self._struct)
+        return lib.clang_getCursorLocation(self._struct)
 
-        return self._location
-
-    @property
+    @CachedProperty
     def extent(self):
         """
         Return the source range (the range of text) occupied by the entity
         pointed at by the cursor.
         """
-        if self._extent is None:
-            self._extent = lib.clang_getCursorExtent(self._struct)
+        return lib.clang_getCursorExtent(self._struct)
 
-        return self._extent
-
-    @property
+    @CachedProperty
     def type(self):
         """
         Retrieve the Type (if any) of the entity pointed at by the cursor.
         """
-        if self._type is None:
-            self._type = lib.clang_getCursorType(self._struct)
+        return lib.clang_getCursorType(self._struct)
 
-        return self._type
-
-    @property
+    @CachedProperty
     def referenced(self):
         """Return the Cursor referenced by this Cursor.
 
         If no Cursor is referenced by this Cursor, returns None.
         """
-        if self._referenced is None:
-            self._referenced = lib.clang_getCursorReferenced(self._struct)
+        return lib.clang_getCursorReferenced(self._struct)
 
-        return self._referenced
-
-    @property
+    @CachedProperty
     def canonical(self):
         """Return the canonical Cursor corresponding to this Cursor.
 
@@ -1251,45 +1191,32 @@ class Cursor(object):
         declarations for the same class, the canonical cursor for the forward
         declarations will be identical.
         """
-        if self._canonical is None:
-            self._canonical = lib.clang_getCanonicalCursor(self._struct)
+        return lib.clang_getCanonicalCursor(self._struct)
 
-        return self._canonical
-
-    @property
+    @CachedProperty
     def result_type(self):
         """Retrieve the Type of the result for this Cursor."""
-        if self._result_type is None:
-            self._result_type = lib.clang_getResultType(self._struct)
+        return lib.clang_getResultType(self.type._struct)
 
-        return self._result_type
-
-    @property
+    @CachedProperty
     def underlying_typedef_type(self):
         """Return the underlying type of a typedef declaration.
 
         Returns a Type for the typedef this cursor is a declaration for. If
         the current cursor is not a typedef, this raises.
         """
-        if self._underlying_type is None:
-            assert self.kind.is_declaration()
-            self._underlying_type = lib.clang_getTypedefDeclUnderlyingType(
-                    self._struct)
+        assert self.kind.is_declaration()
+        return lib.clang_getTypedefDeclUnderlyingType(self._struct)
 
-        return self._underlying_type
-
-    @property
+    @CachedProperty
     def enum_type(self):
         """Return the integer type of an enum declaration.
 
         Returns a Type corresponding to an integer. If the cursor is not for an
         enum, this raises.
         """
-        if self._enum_type is None:
-            assert self.kind == CursorKind.ENUM_DECL
-            self._enum_type = lib.clang_getEnumDeclIntegerType(self._struct)
-
-        return self._enum_type
+        assert self.kind == CursorKind.ENUM_DECL
+        return lib.clang_getEnumDeclIntegerType(self._struct)
 
     @property
     def enum_value(self):
@@ -1315,27 +1242,20 @@ class Cursor(object):
                 self._enum_value = Cursor_enum_const_decl(self)
         return self._enum_value
 
-    @property
+    @CachedProperty
     def objc_type_encoding(self):
         """Return the Objective-C type encoding as a str."""
-        if self._objc_type_encoding is None:
-            self._objc_type_encoding = lib.clang_getDeclObjCTypeEncoding(
-                    self._struct)
+        return lib.clang_getDeclObjCTypeEncoding(self._struct)
 
-        return self._objc_type_encoding
-
-    @property
+    @CachedProperty
     def access_specifier(self):
         """Returns the access control level for a base or access specifier
         cursor.
         """
-        if self._access_specifier is None:
-            self._access_specifier = CXXAccessSpecifier.from_value(
+        return CXXAccessSpecifier.from_value(
                 lib.clang_getCXXAccessSpecifier(self._struct))
 
-        return self._access_specifier
-
-    @property
+    @CachedProperty
     def overloaded_declaration_count(self):
         """Return the number of overloaded declarations referenced by this
         Cursor.
@@ -1343,12 +1263,8 @@ class Cursor(object):
         If this Cursor is not a CursorKind.OVERLOADED_DECL_REF, this will
         raise.
         """
-        if self._overloaded_decl_count is None:
-            assert self.kind == CursorKind.OVERLOADED_DECL_REF
-            self._overloaded_decl_count = lib.clang_getNumOverloadedDecls(
-                    self._struct)
-
-        return self._overloaded_decl_count
+        assert self.kind == CursorKind.OVERLOADED_DECL_REF
+        return lib.clang_getNumOverloadedDecls(self._struct)
 
     def get_overloaded_declaration(self, index):
         """Retrieve a Cursor for a specific overloaded declaration referenced
@@ -1372,13 +1288,10 @@ class Cursor(object):
         for i in range(0, self.overloaded_declaration_count):
             yield self.get_overloaded_declaration(i)
 
-    @property
+    @CachedProperty
     def hash(self):
         """Returns a hash of the cursor as an int."""
-        if self._hash is None:
-            self._hash = lib.clang_hashCursor(self._struct)
-
-        return self._hash
+        return lib.clang_hashCursor(self._struct)
 
     @property
     def semantic_parent(self):
