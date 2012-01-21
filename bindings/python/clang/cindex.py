@@ -2091,11 +2091,6 @@ class CompletionString(ClangObject):
                + " || Priority: " + str(self.priority) \
                + " || Availability: " + str(self.availability)
 
-availabilityKinds = {
-            0: CompletionChunk.Kind("Available"),
-            1: CompletionChunk.Kind("Deprecated"),
-            2: CompletionChunk.Kind("NotAvailable")}
-
 class CodeCompletionResult(Structure):
     """Represents a single code completion result."""
     _fields_ = [('cursorKind', c_int), ('completionString', c_object_p)]
@@ -3082,6 +3077,10 @@ for value, name in enumerations.ResourceUsageKinds:
 completionChunkKindMap = {}
 for value, name in enumerations.CompletionChunkKinds:
     completionChunkKindMap[value] = CompletionChunk.Kind(name)
+
+availabilityKinds = {}
+for value, name in enumerations.AvailabilityKinds:
+    availabilityKinds[value] = CompletionChunk.Kind(name)
 
 __all__ = [
     'CodeCompletionResults',

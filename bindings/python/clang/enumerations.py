@@ -16,6 +16,12 @@ This module provides static definitions of enumerations that exist in libclang.
 Enumerations are typically defined as a list of tuples.
 """
 
+AvailabilityKinds = [
+    (0, 'Available'),
+    (1, 'Deprecated'),
+    (2, 'NotAvailable'),
+]
+
 CompletionChunkKinds = [
     (0, 'Optional'),
     (1, 'TypedText'),
@@ -596,6 +602,7 @@ ResourceUsageKinds = [
 ]
 
 __all__ = [
+    'AvailabilityKinds',
     'CompletionChunkKinds',
     'CursorKinds',
     'CXXAccessSpecifiers',
