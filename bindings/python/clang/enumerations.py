@@ -16,6 +16,30 @@ This module provides static definitions of enumerations that exist in libclang.
 Enumerations are typically defined as a list of tuples.
 """
 
+CompletionChunkKinds = [
+    (0, 'Optional'),
+    (1, 'TypedText'),
+    (2, 'Text'),
+    (3, 'Placeholder'),
+    (4, 'Informative'),
+    (5, 'CurrentParameter'),
+    (6, 'LeftParen'),
+    (7, 'RightParen'),
+    (8, 'LeftBracket'),
+    (9, 'RightBracket'),
+    (10, 'LeftBrace'),
+    (11, 'RightBrace'),
+    (12, 'LeftAngle'),
+    (13, 'RightAngle'),
+    (14, 'Comma'),
+    (15, 'ResultType'),
+    (16, 'Colon'),
+    (17, 'SemiColon'),
+    (18, 'Equal'),
+    (19, 'HorizontalSpace'),
+    (20, 'VerticalSpace'),
+]
+
 CursorKinds = [
 # A declaration whose specific kind is not exposed via this interface.
 #
@@ -570,7 +594,9 @@ ResourceUsageKinds = [
     (13, 'SourceManagerDataStructures'),
     (14, 'PreprocessorHeaderSearch'),
 ]
+
 __all__ = [
+    'CompletionChunkKinds',
     'CursorKinds',
     'CXXAccessSpecifiers',
     'ResourceUsageKinds',

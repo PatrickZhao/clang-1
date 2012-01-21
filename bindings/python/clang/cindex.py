@@ -1986,9 +1986,16 @@ class Token(object):
 
 ## CIndex Objects ##
 
+class CompletionChunk(object):
+    """Represents the type of a code completion.
 
-class CompletionChunk:
-    class Kind:
+    Every CompletionString has an associated CompletionChunk.
+    """
+    class Kind(object):
+        """Represents a specific type of code completion.
+
+        Each instance represents a single CXCompletionChunkKind value.
+        """
         def __init__(self, name):
             self.name = name
 
@@ -2005,17 +2012,21 @@ class CompletionChunk:
     def __repr__(self):
         return "{'" + self.spelling + "', " + str(self.kind) + "}"
 
-    @property
+    @CachedProperty
     def spelling(self):
+        """Obtain the string text associated with this completion."""
         return lib.clang_getCompletionChunkText(self.cs, self.key).spelling
 
-    @property
+    @CachedProperty
     def kind(self):
+        """Obtain the CompletionChunk.Kind this completion represents."""
         res = lib.clang_getCompletionChunkKind(self.cs, self.key)
         return completionChunkKindMap[res]
 
-    @property
+    @CachedProperty
     def string(self):
+        """Retrieve a CompletionString for the Cursor backing this
+        completion."""
         res = lib.clang_getCompletionChunkCompletionString(self.cs, self.key)
 
         if (res):
@@ -2024,45 +2035,29 @@ class CompletionChunk:
             None
 
     def isKindOptional(self):
+        """Whether this is an optional completion kind."""
         return self.kind == completionChunkKindMap[0]
 
     def isKindTypedText(self):
+        """Whether this is a typed text completion kind."""
         return self.kind == completionChunkKindMap[1]
 
     def isKindPlaceHolder(self):
+        """Whether this is a placeholder completion kind."""
         return self.kind == completionChunkKindMap[3]
 
     def isKindInformative(self):
+        """Whether this is an informative completion kind."""
         return self.kind == completionChunkKindMap[4]
 
     def isKindResultType(self):
+        """Whether this is a result type completion kind."""
         return self.kind == completionChunkKindMap[15]
 
-completionChunkKindMap = {
-            0: CompletionChunk.Kind("Optional"),
-            1: CompletionChunk.Kind("TypedText"),
-            2: CompletionChunk.Kind("Text"),
-            3: CompletionChunk.Kind("Placeholder"),
-            4: CompletionChunk.Kind("Informative"),
-            5: CompletionChunk.Kind("CurrentParameter"),
-            6: CompletionChunk.Kind("LeftParen"),
-            7: CompletionChunk.Kind("RightParen"),
-            8: CompletionChunk.Kind("LeftBracket"),
-            9: CompletionChunk.Kind("RightBracket"),
-            10: CompletionChunk.Kind("LeftBrace"),
-            11: CompletionChunk.Kind("RightBrace"),
-            12: CompletionChunk.Kind("LeftAngle"),
-            13: CompletionChunk.Kind("RightAngle"),
-            14: CompletionChunk.Kind("Comma"),
-            15: CompletionChunk.Kind("ResultType"),
-            16: CompletionChunk.Kind("Colon"),
-            17: CompletionChunk.Kind("SemiColon"),
-            18: CompletionChunk.Kind("Equal"),
-            19: CompletionChunk.Kind("HorizontalSpace"),
-            20: CompletionChunk.Kind("VerticalSpace")}
-
 class CompletionString(ClangObject):
+    """A semantic string that describes a code-completion result."""
     class Availability:
+        """Represents the availability enumeration."""
         def __init__(self, name):
             self.name = name
 
@@ -2082,10 +2077,12 @@ class CompletionString(ClangObject):
 
     @property
     def priority(self):
+        """The numeric priority of this completion."""
         return lib.clang_getCompletionPriority(self.obj)
 
     @property
     def availability(self):
+        """The CompletionString.Availability of this completion."""
         res = lib.clang_getCompletionAvailability(self.obj)
         return availabilityKinds[res]
 
@@ -2100,6 +2097,7 @@ availabilityKinds = {
             2: CompletionChunk.Kind("NotAvailable")}
 
 class CodeCompletionResult(Structure):
+    """Represents a single code completion result."""
     _fields_ = [('cursorKind', c_int), ('completionString', c_object_p)]
 
     def __repr__(self):
@@ -2107,13 +2105,16 @@ class CodeCompletionResult(Structure):
 
     @property
     def kind(self):
+        """The CursorKind for this result."""
         return CursorKind.from_value(self.cursorKind)
 
     @property
     def string(self):
+        """The CompletionString for this result."""
         return CompletionString(self.completionString)
 
 class CCRStructure(Structure):
+    """Container for CodeCompletion instances."""
     _fields_ = [('results', POINTER(CodeCompletionResult)),
                 ('numResults', c_int)]
 
@@ -2127,11 +2128,13 @@ class CCRStructure(Structure):
         return self.results[key]
 
 class CodeCompletionResults(ClangObject):
+    """Represents the results of a code completion request."""
     def __init__(self, ptr):
         assert isinstance(ptr, POINTER(CCRStructure)) and ptr
         self.ptr = self._as_parameter_ = ptr
 
     def from_param(self):
+        """ctypes helper to convert the instance to a function argument."""
         return self._as_parameter_
 
     def __del__(self):
@@ -2139,11 +2142,21 @@ class CodeCompletionResults(ClangObject):
 
     @property
     def results(self):
+        """The actual code completion results.
+
+        Returns a CCRStructure instance.
+        """
         return self.ptr.contents
 
     @property
     def diagnostics(self):
+        """The diagnostics for this code completion result.
+
+        Returns an iteratable and indexable object holding Diagnostic
+        instances.
+        """
         class DiagnosticsItr:
+            """A container for Diagnostic instances."""
             def __init__(self, ccr):
                 self.ccr = ccr
 
@@ -3065,6 +3078,10 @@ for name, value in enumerations.TypeKinds:
 
 for value, name in enumerations.ResourceUsageKinds:
     ResourceUsageKind.register(value, name)
+
+completionChunkKindMap = {}
+for value, name in enumerations.CompletionChunkKinds:
+    completionChunkKindMap[value] = CompletionChunk.Kind(name)
 
 __all__ = [
     'CodeCompletionResults',
