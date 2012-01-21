@@ -312,6 +312,8 @@ class CachedProperty(object):
 
         return value
 
+### Structure Classes ###
+
 class CXString(Structure):
     """Helper for transforming CXString results."""
 
@@ -331,6 +333,30 @@ class CXString(Structure):
         """
         assert isinstance(res, CXString)
         return lib.clang_getCString(res)
+
+class ClangObject(object):
+    """Base class for Clang objects.
+
+    This is the common base class for all Clang types that are represented as
+    void * types. The purpose of this class is to marshall types between Python
+    and libclang through the ctypes module.
+
+    This class should never be instantiated directly, only through children.
+    """
+    def __init__(self, obj):
+        assert isinstance(obj, c_object_p) and obj
+        self.obj = self._as_parameter_ = obj
+
+    def from_param(self):
+        return self._as_parameter_
+
+class _CXUnsavedFile(Structure):
+    """Helper for passing unsaved file arguments."""
+    _fields_ = [
+        ('name', c_char_p),
+        ('contents', c_char_p),
+        ('length', c_ulong)
+    ]
 
 ### Classes Defining Enumerations ###
 
@@ -1892,26 +1918,6 @@ class Token(object):
 
 ## CIndex Objects ##
 
-class ClangObject(object):
-    """Base class for Clang objects.
-
-    This is the common base class for all Clang types that are represented as
-    void * types. The purpose of this class is to marshall types between Python
-    and libclang through the ctypes module.
-
-    This class should never be instantiated directly, only through children.
-    """
-    def __init__(self, obj):
-        assert isinstance(obj, c_object_p) and obj
-        self.obj = self._as_parameter_ = obj
-
-    def from_param(self):
-        return self._as_parameter_
-
-
-class _CXUnsavedFile(Structure):
-    """Helper for passing unsaved file arguments."""
-    _fields_ = [("name", c_char_p), ("contents", c_char_p), ('length', c_ulong)]
 
 class CompletionChunk:
     class Kind:
