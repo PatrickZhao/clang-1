@@ -623,10 +623,6 @@ class SourceRange(object):
             ('end_int_data', c_uint)
         ]
 
-    __slots__ = (
-        '_struct',
-    )
-
     def __init__(self, start=None, end=None, structure=None, tu=None):
         """Construct a SourceRange instance.
 
@@ -675,14 +671,14 @@ class SourceRange(object):
         self._struct = lib.clang_getRange(start.from_param(), end.from_param())
         self._struct.translation_unit = start.translation_unit
 
-    @property
+    @CachedProperty
     def start(self):
         """Return a SourceLocation representing the first character within this
         range.
         """
         return lib.clang_getRangeStart(self._struct)
 
-    @property
+    @CachedProperty
     def end(self):
         """Return a SourceLocation representing the last character within this
         range.
