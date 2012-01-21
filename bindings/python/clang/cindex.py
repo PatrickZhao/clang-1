@@ -899,7 +899,7 @@ class CXXAccessSpecifier(object):
         """
         result = CXXAccessSpecifier._value_map.get(value, None)
         if result is None:
-            raise ValueError('CXXAccessSpecifier not registered: %d' % value)
+            raise ValueError('Unknown CXXAccessSpecifier: %d' % value)
 
         return result
 
@@ -932,11 +932,11 @@ class CursorKind(object):
         self.name = name
 
     @staticmethod
-    def from_id(value):
+    def from_value(value):
         result = CursorKind._value_map.get(value, None)
 
         if result is None:
-            raise ValueError('Unknown cursor kind')
+            raise ValueError('Unknown CursorKind: %d' % value)
 
         return result
 
@@ -1115,7 +1115,7 @@ class Cursor(object):
     @property
     def kind(self):
         """Return the kind of this cursor."""
-        return CursorKind.from_id(self._struct.kind)
+        return CursorKind.from_value(self._struct.kind)
 
     @property
     def template_kind(self):
@@ -1365,6 +1365,17 @@ class Cursor(object):
                                 children)
         return iter(children)
 
+    def get_tokens(self):
+        """Obtain the Tokens that constitute this token.
+
+        This is a merely a convenience method that calls into
+        TranslationUnit.get_tokens().
+
+        This method is a generator of Token instances.
+        """
+        for t in self.translation_unit.get_tokens(sourcerange=self.extent):
+            yield t
+
     def get_reference_name_extent(self,
                                   index=0,
                                   qualifier=False,
@@ -1472,7 +1483,7 @@ class TypeKind(object):
         return 'TypeKind.%s' % (self.name,)
 
     @staticmethod
-    def from_id(value):
+    def from_value(value):
         result = TypeKind._value_map.get(value, None)
 
         if result is None:
@@ -1520,7 +1531,7 @@ class Type(object):
     @property
     def kind(self):
         """Return the kind of this type."""
-        return TypeKind.from_id(self._struct.kind_id)
+        return TypeKind.from_value(self._struct.kind_id)
 
     def argument_types(self):
         """Retrieve a container for the non-variadic arguments for this type.
@@ -1708,12 +1719,12 @@ class TokenKind(object):
         return 'TokenKind.%s' % (self.name,)
 
     @staticmethod
-    def from_id(value):
+    def from_value(value):
         """Obtain a registered TokenKind instance from its value."""
         result = TokenKind._value_map.get(value, None)
 
         if result is None:
-            raise ValueError('Unknown token kind %d' % value)
+            raise ValueError('Unknown TokenKind: %d' % value)
 
         return result
 
@@ -1764,7 +1775,7 @@ class Token(object):
     @CachedProperty
     def kind(self):
         """The TokenKind for this token."""
-        return TokenKind.from_id(lib.clang_getTokenKind(self._struct))
+        return TokenKind.from_value(lib.clang_getTokenKind(self._struct))
 
     @CachedProperty
     def spelling(self):
@@ -1946,7 +1957,7 @@ class CodeCompletionResult(Structure):
 
     @property
     def kind(self):
-        return CursorKind.from_id(self.cursorKind)
+        return CursorKind.from_value(self.cursorKind)
 
     @property
     def string(self):
@@ -2060,8 +2071,7 @@ class ResourceUsageKind(object):
         result = ResourceUsageKind._value_map.get(value, None)
 
         if result is None:
-            raise ValueError('Unknown ResourceUsageKind enumeration: %d' %
-                    value)
+            raise ValueError('Unknown ResourceUsageKind: %d' % value)
 
         return result
 
