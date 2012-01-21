@@ -3016,6 +3016,7 @@ def register_functions(lib):
 
 register_functions(lib)
 
+# Register enumerations.
 for name, value in enumerations.CursorKinds:
     CursorKind.register(value, name)
 
