@@ -1748,15 +1748,6 @@ class Token(object):
             ('ptr_data', c_void_p)
         ]
 
-    __slots__ = (
-        '_cursor',
-        '_extent',
-        '_kind',
-        '_location',
-        '_spelling',
-        '_struct',
-    )
-
     def __init__(self, structure=None, tu=None):
         assert isinstance(structure, Token.CXToken)
 
@@ -1766,68 +1757,47 @@ class Token(object):
         self._struct = structure
         self._struct.translation_unit = tu
 
-        self._cursor = None
-        self._extent = None
-        self._kind = None
-        self._location = None
-        self._spelling = None
-
-    @property
+    @CachedProperty
     def kind(self):
         """The TokenKind for this token."""
-        if self._kind is None:
-            self._kind = lib.clang_getTokenKind(self._struct)
+        return lib.clang_getTokenKind(self._struct)
 
-        return self._kind
-
-    @property
+    @CachedProperty
     def spelling(self):
         """The spelling for this token.
 
         This is the literal text defining the token.
         """
-        if self._spelling is None:
-            self._spelling = lib.clang_getTokenSpelling(
-                    self._struct.translation_unit, self._struct)
+        return lib.clang_getTokenSpelling(self._struct.translation_unit,
+                                          self._struct)
 
-        return self._spelling
-
-    @property
+    @CachedProperty
     def location(self):
         """The location of this token.
 
         Returns a SourceLocation instance.
         """
-        if self._location is None:
-            self._location = lib.clang_getTokenLocation(
-                    self._struct.translation_unit, self._struct)
+        return lib.clang_getTokenLocation(self._struct.translation_unit,
+                                          self._struct)
 
-        return self._location
-
-    @property
+    @CachedProperty
     def extent(self):
         """The source locations this token occupies.
 
         Returns a SourceRange instance.
         """
-        if self._extent is None:
-            self._extent = lib.clang_getTokenExtent(
-                    self._struct.translation_unit, self._struct)
+        return lib.clang_getTokenExtent(self._struct.translation_unit,
+                                        self._struct)
 
-        return self._extent
 
-    @property
+    @CachedProperty
     def cursor(self):
         """Retrieve the Cursor this Token corresponds to."""
-        if self._cursor is None:
-            cursor = Cursor.CXCursor()
-            lib.clang_annotateTokens(self._struct.translation_unit,
-                                     byref(self._struct), 1, byref(cursor))
+        cursor = Cursor.CXCursor()
+        lib.clang_annotateTokens(self._struct.translation_unit,
+                                 byref(self._struct), 1, byref(cursor))
 
-            self._cursor = Cursor(structure=cursor,
-                                  tu=self._struct.translation_unit)
-
-        return self._cursor
+        return Cursor(structure=cursor, tu=self._struct.translation_unit)
 
 ## CIndex Objects ##
 
