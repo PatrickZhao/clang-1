@@ -4,7 +4,7 @@ from nose.plugins.skip import SkipTest
 def test_file():
   index = Index.create()
   tu = index.parse('t.c', unsaved_files = [('t.c', "")])
-  file = File.from_name(tu, "t.c")
+  file = File(filename='t.c', tu=tu)
   assert str(file) == "t.c"
   assert file.name == "t.c"
   assert repr(file) == "<File: t.c>"
@@ -19,7 +19,7 @@ int foo();
 
     index = Index.create()
     tu = index.parse('t.h', unsaved_files = [('t.h', header)])
-    file = File.from_name(tu, 't.h')
+    file = File(filename='t.h', tu=tu)
     assert str(file) == 't.h'
 
     raise SkipTest("is_multiple_include_guarded doesn't seem to work.")

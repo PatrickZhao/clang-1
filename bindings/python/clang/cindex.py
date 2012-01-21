@@ -786,7 +786,7 @@ class SourceLocation(object):
             if tu is None:
                 raise ValueError('tu must be defined when source is a str.')
 
-            input_file = File.from_name(tu, source)
+            input_file = File(filename=source, tu=tu)
         else:
             input_file = source
             tu = source.translation_unit
@@ -820,7 +820,8 @@ class SourceLocation(object):
         if not f:
             raise Exception('Could not resolve SourceLocation.')
 
-        return (File(f), int(line.value), int(column.value), int(offset.value))
+        return (File(obj=f, tu=self._tu), int(line.value), int(column.value),
+                int(offset.value))
 
     @CachedProperty
     def presumed_location(self):
@@ -838,7 +839,7 @@ class SourceLocation(object):
         if not f:
             raise Exception('Could not resolve SourceLocation.')
 
-        return (File(f), int(line.value), int(column.value))
+        return (File(obj=f, tu=self._tu), int(line.value), int(column.value))
 
     @CachedProperty
     def spelling_location(self):
@@ -857,7 +858,8 @@ class SourceLocation(object):
         if not f:
             raise Exception('Could not resolve SourceLocation.')
 
-        return (File(f), int(line.value), int(column.value), int(offset.value))
+        return (File(obj=f, tu=self._tu), int(line.value), int(column.value),
+                int(offset.value))
 
     @property
     def file(self):
@@ -1548,7 +1550,8 @@ class Cursor(object):
         """Returns the File that is included by the current inclusion cursor."""
         assert self.kind == CursorKind.INCLUSION_DIRECTIVE
 
-        return lib.clang_getIncludedFile(self._struct)
+        return File(obj=lib.clang_getIncludedFile(self._struct),
+                    tu=self.translation_unit)
 
     @property
     def translation_unit(self):
@@ -2364,7 +2367,8 @@ class TranslationUnit(ClangObject):
             """Callback executed for each include."""
             if depth > 0:
                 loc = SourceLocation(structure=lptr.contents, tu=self)
-                includes.append(FileInclusion(loc.file, File(fobj), loc, depth))
+                f = File(obj=fobj, tu=self)
+                includes.append(FileInclusion(loc.file, f, loc, depth))
 
         # Automatically adapt CIndex/ctype pointers to python objects
         includes = []
@@ -2540,60 +2544,102 @@ class TranslationUnit(ClangObject):
         resource = lib.clang_getCXTUResourceUsage(self)
         return resource.to_dict()
 
-class File(ClangObject):
+class File(object):
+    """Represents a particular source file that is part of a translation unit.
+
+    This class represents files that exist within translation units. It does
+    not provide an API for directly interacting with the file system.
     """
-    The File class represents a particular source file that is part of a
-    translation unit.
-    """
 
-    __slots__ = ('_tu')
+    class CXFile(ClangObject):
+        """Wrapper around CXFile type.
 
-    def __init__(self, obj):
-        ClangObject.__init__(self, obj)
-        self._tu = None
+        Used internally by the module.
+        """
+        def __init__(self, obj):
+            ClangObject.__init__(self, obj)
 
-    @staticmethod
-    def from_name(translation_unit, file_name):
-        """Retrieve a file handle within the given translation unit."""
-        f = File(lib.clang_getFile(translation_unit, file_name))
-        f._tu = translation_unit
+    def __init__(self, filename=None, obj=None, tu=None):
+        """Construct a File instance from arguments.
 
-        return f
+        Instances can be created from a File.CXFile instance or by specifying a
+        filename. In both cases, a corresponding TranslationUnit must be
+        provided for reference tracking.
 
-    @staticmethod
-    def from_cursor_result(res, func, args):
-        """ctypes helper to construct an instance from a function result."""
-        assert isinstance(res, File)
+        If a source filename is provided, a CXFile instance is obtained
+        automatically by calling the appropriate libclang API.
 
-        # Copy a reference to the TranslationUnit to prevent premature GC.
-        res._tu = args[0]._tu
-        return res
+        Arguments:
 
-    @property
+        filename -- String filename of file to obtain from translation unit.
+        obj -- File.CXFile instance to wrap.
+        tu -- TranslationUnit to which this file belongs. Required.
+        """
+        assert tu is not None
+        assert isinstance(tu, TranslationUnit)
+
+        if filename is not None:
+            assert isinstance(filename, str)
+
+        if obj is not None:
+            assert isinstance(obj, (c_object_p, File.CXFile))
+
+        self._tu = tu
+
+        if filename is not None:
+            result = lib.clang_getFile(tu, filename)
+            if result is None:
+                raise Exception('File not found in translation unit: %s' %
+                                filename)
+
+            self._obj = File.CXFile(result)
+            return
+
+        assert obj is not None
+        if isinstance(obj, c_object_p):
+            self._obj = File.CXFile(obj)
+            return
+
+        self._obj = obj
+
+    @CachedProperty
     def name(self):
         """Return the complete file and path name of the file."""
-        return lib.clang_getFileName(self)
+        return lib.clang_getFileName(self._obj)
 
     @property
     def time(self):
         """Return the last modification time of the file."""
-        return lib.clang_getFileTime(self)
+        return lib.clang_getFileTime(self._obj)
 
-    @property
+    @CachedProperty
     def is_multiple_include_guarded(self):
         """Return whether this file is guarded against multiple inclusions."""
-        return lib.clang_isFileMultipleIncludeGuarded(self._tu, self)
+        return lib.clang_isFileMultipleIncludeGuarded(self._tu, self._obj)
 
     @property
     def translation_unit(self):
         """Return the TranslationUnit to which this File belongs."""
         return self._tu
 
+    def from_param(self):
+        """ctypes helper to convert the instance to a function argument."""
+        return self._obj
+
     def __str__(self):
         return self.name
 
     def __repr__(self):
         return "<File: %s>" % (self.name)
+
+    @staticmethod
+    def from_name(translation_unit, name):
+        """DEPRECATED: Create a File from a TranslationUnit and filename.
+
+        Use the constructor with filename=name, tu=translation_unit instead.
+        """
+        warnings.warn('Switch to File() constructor.', DeprecationWarning)
+        return File(filename=name, tu=translation_unit)
 
 class FileInclusion(object):
     """
@@ -2845,11 +2891,11 @@ def register_functions(lib):
     lib.clang_getFile.argtypes = [TranslationUnit, c_char_p]
     lib.clang_getFile.restype = c_object_p
 
-    lib.clang_getFileName.argtypes = [File]
+    lib.clang_getFileName.argtypes = [File.CXFile]
     lib.clang_getFileName.restype = CXString
     lib.clang_getFileName.errcheck = CXString.from_result
 
-    lib.clang_getFileTime.argtypes = [File]
+    lib.clang_getFileTime.argtypes = [File.CXFile]
     lib.clang_getFileTime.restype = c_uint
 
     lib.clang_getIBOutletCollectionType.argtypes = [Cursor.CXCursor]
@@ -2857,8 +2903,7 @@ def register_functions(lib):
     lib.clang_getIBOutletCollectionType.errcheck = Type.from_struct
 
     lib.clang_getIncludedFile.argtypes = [Cursor.CXCursor]
-    lib.clang_getIncludedFile.restype = File
-    lib.clang_getIncludedFile.errcheck = File.from_cursor_result
+    lib.clang_getIncludedFile.restype = c_object_p
 
     lib.clang_getInclusions.argtypes = [TranslationUnit,
             callbacks['translation_unit_includes'], py_object]
@@ -2991,7 +3036,8 @@ def register_functions(lib):
     lib.clang_isExpression.argtypes = [CursorKind]
     lib.clang_isExpression.restype = bool
 
-    lib.clang_isFileMultipleIncludeGuarded.argtypes = [TranslationUnit, File]
+    lib.clang_isFileMultipleIncludeGuarded.argtypes = [TranslationUnit,
+                                                       File.CXFile]
     lib.clang_isFileMultipleIncludeGuarded.restype = bool
 
     lib.clang_isFunctionTypeVariadic.argtypes = [Type.CXType]

@@ -4,7 +4,7 @@ def test_token_to_cursor():
     index = Index.create()
     tu = index.parse('t.c', unsaved_files=[('t.c', 'int i = 5;')])
 
-    file = File.from_name(tu, 't.c')
+    file = File(filename='t.c', tu=tu)
     start = SourceLocation.from_position(tu, file, 1, 1)
     end = SourceLocation.from_position(tu, file, 1, 10)
 

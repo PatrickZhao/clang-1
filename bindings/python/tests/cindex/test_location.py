@@ -169,7 +169,7 @@ def test_location():
     # the returned location
     tu = get_tu(baseInput)
 
-    file = File.from_name(tu, 't.c')
+    file = File(filename='t.c', tu=tu)
     location = SourceLocation.from_position(tu, file, 1, 5)
     cursor = Cursor.from_location(tu, location)
 
@@ -205,7 +205,7 @@ def test_extent():
     assert_location(two.extent.end,line=2,column=8,offset=16)
     assert baseInput[two.extent.start.offset:two.extent.end.offset] == "int two"
 
-    file = File.from_name(tu, 't.c')
+    file = File(filename='t.c', tu=tu)
     location1 = SourceLocation.from_position(tu, file, 1, 1)
     location2 = SourceLocation.from_position(tu, file, 1, 8)
 
