@@ -299,6 +299,7 @@ class CachedProperty(object):
     """
 
     def __init__(self, wrapped):
+        """Decorate a method."""
         self.wrapped = wrapped
         try:
             self.__doc__ = wrapped.__doc__
@@ -306,6 +307,7 @@ class CachedProperty(object):
             pass
 
     def __get__(self, instance, instance_type=None):
+        """Called when property is accessed."""
         if instance is None:
             return self
 
@@ -353,6 +355,7 @@ class ClangObject(object):
         self.obj = self._as_parameter_ = obj
 
     def from_param(self):
+        """ctypes helper to convert the instance to a function argument."""
         return self._as_parameter_
 
 class CXUnsavedFile(Structure):
@@ -373,6 +376,7 @@ class CXTUResourceUsage(Structure):
     ]
 
     class CXTUResourceUsageEntry(Structure):
+        """Represents a CXTUResourceUsageEntry struct."""
         _fields_ = [
             ('kind', c_uint),
             ('amount', c_ulong)
@@ -470,6 +474,7 @@ class CursorKind(object):
 
     @staticmethod
     def from_value(value):
+        """Obtain a CursorKind instance from a numeric value."""
         result = CursorKind._value_map.get(value, None)
 
         if result is None:
@@ -571,6 +576,11 @@ class ResourceUsageKind(object):
 
     @staticmethod
     def register(value, name):
+        """Register an enumeration from its values.
+
+        This should only be called from within this module and at module load
+        time.
+        """
         kind = ResourceUsageKind(value, name)
         ResourceUsageKind._value_map[value] = kind
         setattr(ResourceUsageKind, name, kind)
@@ -635,6 +645,7 @@ class TypeKind(object):
         return lib.clang_getTypeKindSpelling(self.value)
 
     def from_param(self):
+        """ctypes helper to convert this object to a function arguments."""
         return self.value
 
     def __repr__(self):
@@ -642,6 +653,7 @@ class TypeKind(object):
 
     @staticmethod
     def from_value(value):
+        """Obtain a TypeKind instance from a numeric value."""
         result = TypeKind._value_map.get(value, None)
 
         if result is None:
@@ -1093,19 +1105,28 @@ class Diagnostic(object):
 
     @property
     def severity(self):
+        """The severity of this diagnostic.
+
+        Returns an integer which corresponds to one of the Diagnostic.* values.
+        e.g. Diagnostic.Note, Diagnostic.Warning, etc
+        """
         return lib.clang_getDiagnosticSeverity(self)
 
     @property
     def location(self):
+        """The SourceLocation this diagnostic came from."""
         return lib.clang_getDiagnosticLocation(self)
 
     @property
     def spelling(self):
+        """The string representation of this diagnostic."""
         return lib.clang_getDiagnosticSpelling(self)
 
     @property
     def ranges(self):
+        """An iterator of SourceRange to which this diagnostic applies."""
         class RangeIterator:
+            """An iterator over SourceRange instances."""
             def __init__(self, diag):
                 self.diag = diag
 
@@ -1121,7 +1142,13 @@ class Diagnostic(object):
 
     @property
     def fixits(self):
+        """FixIt instances for this diagnostic.
+
+        This returns an iterator.
+        """
+
         class FixItIterator:
+            """An iterator over FixIt instances."""
             def __init__(self, diag):
                 self.diag = diag
 
@@ -1177,9 +1204,10 @@ class Diagnostic(object):
         return self._ptr
 
 class FixIt(object):
-    """
-    A FixIt represents a transformation to be applied to the source to
-    "fix-it". The fix-it shouldbe applied by replacing the given source range
+    """A FixIt represents a transformation to be applied to the source to
+    "fix-it".
+
+    The fix-it should be applied by replacing the given source range
     with the given value.
     """
 
@@ -1540,6 +1568,7 @@ class Cursor(object):
         # TODO Implement as true iterator without buffering.
         # FIXME: Expose iteration from CIndex, PR6125.
         def visitor(child, parent, children):
+            """Callback executed for each child cursor."""
             cursor = Cursor(structure=child, tu=self._struct.translation_unit)
 
             # FIXME: Document this assertion in API.
@@ -1828,6 +1857,7 @@ class Type(object):
 
     @staticmethod
     def from_struct(res, func, args):
+        """ctypes helper to create a Type from a function result."""
         assert isinstance(res, Type.CXType)
 
         tu = None
@@ -2333,6 +2363,7 @@ class TranslationUnit(ClangObject):
         headers.
         """
         def visitor(fobj, lptr, depth, includes):
+            """Callback executed for each include."""
             if depth > 0:
                 loc = SourceLocation(structure=lptr.contents, tu=self)
                 includes.append(FileInclusion(loc.file, File(fobj), loc, depth))
@@ -2346,10 +2377,12 @@ class TranslationUnit(ClangObject):
 
     @property
     def diagnostics(self):
-        """
-        Return an iterable (and indexable) object containing the diagnostics.
+        """The diagnostics for this translation unit.
+
+        Returns an iterable (and indexable) object containing the diagnostics.
         """
         class DiagIterator:
+            """Iterator and container for Diagnostic instances."""
             def __init__(self, tu):
                 self.tu = tu
 
@@ -2531,6 +2564,7 @@ class File(ClangObject):
 
     @staticmethod
     def from_cursor_result(res, func, args):
+        """ctypes helper to construct an instance from a function result."""
         assert isinstance(res, File)
 
         # Copy a reference to the TranslationUnit to prevent premature GC.
