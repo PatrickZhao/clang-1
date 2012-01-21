@@ -492,6 +492,14 @@ CursorKinds = [
 
 ]
 
+TokenKinds = [
+    ('PUNCTUATION', 0),
+    ('KEYWORD', 1),
+    ('IDENTIFIER', 2),
+    ('LITERAL', 3),
+    ('COMMENT', 4),
+]
+
 TypeKinds = [
     ('INVALID', 0),
     ('UNEXPOSED', 1),
@@ -558,5 +566,6 @@ ResourceUsageKinds = [
 __all__ = [
     'CursorKinds',
     'ResourceUsageKinds',
+    'TokenKinds',
     'TypeKinds',
 ]

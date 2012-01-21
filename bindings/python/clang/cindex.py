@@ -1683,49 +1683,41 @@ class Type(object):
         return Type(structure=res, tu=tu)
 
 class TokenKind(object):
-    """Describes the kind of token."""
+    """Describes a specific type of a Token."""
 
-    # The unique kind objects, indexed by id.
-    _kinds = []
-    _name_map = None
+    _value_map = {} # int -> TokenKind
 
-    def __init__(self, value):
-        if value >= len(TokenKind._kinds):
-            TokenKind._kinds += [None] * (value - len(TokenKind._kinds) + 1)
-        if TokenKind._kinds[value] is not None:
-            raise ValueError('TokenKind already loaded')
+    def __init__(self, value, name):
+        """Create a new TokenKind instance from a numeric value and a name."""
         self.value = value
-        TokenKind._kinds[value] = self
-        TokenKind._name_map = None
-
-    @property
-    def name(self):
-        """Get the enumeration name of this token kind."""
-        if self._name_map is None:
-            self._name_map = {}
-            for key, value in TokenKind.__dict__.items():
-                if isinstance(value, TokenKind):
-                    self._name_map[value] = key
-        return self._name_map[self]
-
-    @staticmethod
-    def from_result(res, func, args):
-        return TokenKind.from_id(res)
-
-    @staticmethod
-    def from_id(value):
-        if value >= len(TokenKind._kinds) or TokenKind._kinds[value] is None:
-            raise ValueError('Unknown token kind %d' % value)
-        return TokenKind._kinds[value]
+        self.name = name
 
     def __repr__(self):
         return 'TokenKind.%s' % (self.name,)
 
-TokenKind.PUNCTUATION = TokenKind(0)
-TokenKind.KEYWORD = TokenKind(1)
-TokenKind.IDENTIFIER = TokenKind(2)
-TokenKind.LITERAL = TokenKind(3)
-TokenKind.COMMENT = TokenKind(4)
+    @staticmethod
+    def from_id(value):
+        """Obtain a registered TokenKind instance from its value."""
+        result = TokenKind._value_map.get(value, None)
+
+        if result is None:
+            raise ValueError('Unknown token kind %d' % value)
+
+        return result
+
+    @staticmethod
+    def register(value, name):
+        """Register a new TokenKind enumeration.
+
+        This should only be called at module load time by code within this
+        package.
+        """
+        if value in TokenKind._value_map:
+            raise ValueError('TokenKind already registered: %d' % value)
+
+        kind = TokenKind(value, name)
+        TokenKind._value_map[value] = kind
+        setattr(TokenKind, name, kind)
 
 class Token(object):
     """Represents a token from a source file.
@@ -1760,7 +1752,7 @@ class Token(object):
     @CachedProperty
     def kind(self):
         """The TokenKind for this token."""
-        return lib.clang_getTokenKind(self._struct)
+        return TokenKind.from_id(lib.clang_getTokenKind(self._struct))
 
     @CachedProperty
     def spelling(self):
@@ -2840,7 +2832,6 @@ def register_functions(lib):
 
     lib.clang_getTokenKind.argtypes = [Token.CXToken]
     lib.clang_getTokenKind.restype = c_uint
-    lib.clang_getTokenKind.errcheck = TokenKind.from_result
 
     lib.clang_getTokenLocation.argtype = [TranslationUnit, Token.CXToken]
     lib.clang_getTokenLocation.restype = SourceLocation.CXSourceLocation
@@ -2950,6 +2941,9 @@ register_functions(lib)
 
 for name, value in enumerations.CursorKinds:
     CursorKind.register(value, name)
+
+for name, value in enumerations.TokenKinds:
+    TokenKind.register(value, name)
 
 for name, value in enumerations.TypeKinds:
     TypeKind.register(value, name)
