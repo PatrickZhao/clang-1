@@ -549,11 +549,6 @@ class ResourceUsageKind(object):
 
     _value_map = {}
 
-    __slots__ = (
-        'name',
-        'value',
-    )
-
     def __init__(self, value, name):
         """Create a new resource usage kind instance.
 
@@ -581,6 +576,10 @@ class ResourceUsageKind(object):
         This should only be called from within this module and at module load
         time.
         """
+        if value in ResourceUsageKind._value_map:
+            raise ValueError('ResourceUsageKind already registered: %d' %
+                             value)
+
         kind = ResourceUsageKind(value, name)
         ResourceUsageKind._value_map[value] = kind
         setattr(ResourceUsageKind, name, kind)
@@ -628,28 +627,19 @@ class TokenKind(object):
 class TypeKind(object):
     """Describes the kind of type."""
 
-    __slots__ = (
-        'name',
-        'value'
-    )
-
     _value_map = {}
 
     def __init__(self, value, name):
         self.name = name
         self.value = value
 
-    @property
+    def __repr__(self):
+        return 'TypeKind.%s' % (self.name,)
+
+    @CachedProperty
     def spelling(self):
         """Retrieve the spelling of this TypeKind."""
         return lib.clang_getTypeKindSpelling(self.value)
-
-    def from_param(self):
-        """ctypes helper to convert this object to a function arguments."""
-        return self.value
-
-    def __repr__(self):
-        return 'TypeKind.%s' % (self.name,)
 
     @staticmethod
     def from_value(value):
