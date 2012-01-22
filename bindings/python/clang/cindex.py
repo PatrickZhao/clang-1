@@ -1356,7 +1356,8 @@ class Cursor(object):
         # declaration prior to issuing the lookup.
         return lib.clang_getCursorDefinition(self._struct)
 
-    def get_usr(self):
+    @CachedProperty
+    def usr(self):
         """Return the Unified Symbol Resultion (USR) for the entity referenced
         by the given cursor (or None).
 
