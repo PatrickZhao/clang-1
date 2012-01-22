@@ -316,6 +316,64 @@ class CachedProperty(object):
 
         return value
 
+class ClangContainer(object):
+    """An iterable and indexable container for Clang objects.
+
+    A number of Clang types act as containers. libclang provides simple APIs
+    to get the number of elements and to access individual elements. This
+    generic functionality is encapsulated in this class so each type doesn't
+    have to define its own container class.
+    """
+    def __init__(self, length_info=None, get_index_info=None):
+        """Create a new container.
+
+        length_info is a 2-tuple defining the function to be called to obtain
+        the length and a list of arguments to be passed to that function.
+
+        get_index_info is a 4-tuple defining how to perform an indexed get from
+        the container. The first item is the libclang function to call. The
+        second is a list of arguments to pass to this function. If callable, it
+        will be called to obtain the arguments to pass. The 3rd is the position
+        in this list that will take the numeric index being requested. The 4th
+        is an optional callback to be called to sanitize the result. If not
+        provided, the raw result from the function will be returned.
+        """
+        self.length_fn, self.length_args = length_info
+
+        self.get_index_fn = get_index_info[0]
+        self.get_index_args = get_index_info[1]
+        self.get_index_position = get_index_info[2]
+        self.get_index_callback = get_index_info[3]
+
+        self.cached_length = None
+
+    def __len__(self):
+        if self.cached_length is None:
+            self.cached_length = int(self.length_fn(*self.length_args))
+
+        return self.cached_length
+
+    def __getitem__(self, key):
+        if not isinstance(key, int):
+            raise TypeError('key must be an integer.')
+
+        if key < 0 or key >= len(self):
+            raise IndexError()
+
+        args = self.get_index_args
+
+        if callable(self.get_index_args):
+            args = self.get_index_args(key)
+        else:
+            args[self.get_index_position] = key
+
+        result = self.get_index_fn(*args)
+
+        if self.get_index_callback:
+            return self.get_index_callback(result)
+
+        return result
+
 ### Structure Classes ###
 
 # Classes in this section effectively define the libclang C types in Python.
@@ -1111,48 +1169,41 @@ class Diagnostic(object):
 
     @property
     def ranges(self):
-        """An iterator of SourceRange to which this diagnostic applies."""
-        class RangeIterator:
-            """An iterator over SourceRange instances."""
-            def __init__(self, diag):
-                self.diag = diag
+        """The SourceRanges to which this diagnostic applies.
 
-            def __len__(self):
-                return int(lib.clang_getDiagnosticNumRanges(self.diag))
+        This returns a ClangContainer of SourceRange instances. The container
+        is iterable and indexable.
+        """
+        length_info = (lib.clang_getDiagnosticNumRanges, [self])
+        index_info = (lib.clang_getDiagnosticRange, [self, None], 1, None)
 
-            def __getitem__(self, key):
-                if (key >= len(self)):
-                    raise IndexError
-                return lib.clang_getDiagnosticRange(self.diag, key)
-
-        return RangeIterator(self)
+        return ClangContainer(length_info=length_info,
+                              get_index_info=index_info)
 
     @property
     def fixits(self):
         """FixIt instances for this diagnostic.
 
-        This returns an iterable and indexable object.
+        This returns a ClangContainer of FixIt instances. The container is
+        iterable and indexable.
         """
+        fix_range = SourceRange.CXSourceRange()
 
-        class FixItIterator:
-            """An iterator over FixIt instances."""
-            def __init__(self, diag):
-                self.diag = diag
+        def get_args(key):
+            return [self, key, byref(fix_range)]
 
-            def __len__(self):
-                return int(lib.clang_getDiagnosticNumFixIts(self.diag))
+        def normalize(result):
+            assert len(result) > 0
 
-            def __getitem__(self, key):
-                fix_range = SourceRange.CXSourceRange()
-                value = lib.clang_getDiagnosticFixIt(self.diag, key,
-                        byref(fix_range))
-                if len(value) == 0:
-                    raise IndexError
+            new_range = SourceRange(structure=fix_range, tu=self._tu)
+            return FixIt(new_range, result)
 
-                new_range = SourceRange(structure=fix_range, tu=self.diag._tu)
-                return FixIt(new_range, value)
 
-        return FixItIterator(self)
+        length_info = (lib.clang_getDiagnosticNumFixIts, [self])
+        index_info = (lib.clang_getDiagnosticFixIt, get_args, None, normalize)
+
+        return ClangContainer(length_info=length_info,
+                              get_index_info=index_info)
 
     @CachedProperty
     def category_number(self):
@@ -2371,23 +2422,19 @@ class TranslationUnit(ClangObject):
     def diagnostics(self):
         """The diagnostics for this translation unit.
 
-        Returns an iterable (and indexable) object containing the diagnostics.
+        Returns a ClangContainer of Diagnostic instances that is iterable and
+        indexable.
         """
-        class DiagIterator:
-            """Iterator and container for Diagnostic instances."""
-            def __init__(self, tu):
-                self.tu = tu
+        def normalize(result):
+            if not result:
+                raise IndexError
 
-            def __len__(self):
-                return int(lib.clang_getNumDiagnostics(self.tu))
+            return Diagnostic(result, tu=self)
 
-            def __getitem__(self, key):
-                diag = lib.clang_getDiagnostic(self.tu, key)
-                if not diag:
-                    raise IndexError
-                return Diagnostic(diag, tu=self.tu)
+        length_info = (lib.clang_getNumDiagnostics, [self])
+        index_info = (lib.clang_getDiagnostic, [self, None], 1, normalize)
 
-        return DiagIterator(self)
+        return ClangContainer(length_info=length_info, get_index_info=index_info)
 
     def reparse(self, unsaved_files=None, options=0):
         """Reparse an already parsed translation unit.
