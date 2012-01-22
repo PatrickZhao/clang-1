@@ -1,4 +1,15 @@
 from clang.cindex import CursorKind
+from nose.tools import raises
+
+@raises(ValueError)
+def test_bad_register():
+    """Ensure registering a redundant value raises."""
+    CursorKind.register(1, 'foo')
+
+@raises(ValueError)
+def test_missing_value():
+    """Ensure fetching a missing value raises."""
+    CursorKind.from_value(-1)
 
 def test_name():
     assert CursorKind.UNEXPOSED_DECL.name is 'UNEXPOSED_DECL'
@@ -38,3 +49,8 @@ def test_kind_groups():
             assert len(group) == 0
         else:
             assert len(group) == 1
+
+def test_repr():
+    """Ensure repr() formatting is proper."""
+    r = repr(CursorKind.TYPE_REF)
+    assert r == 'CursorKind.TYPE_REF'
