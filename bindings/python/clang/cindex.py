@@ -417,7 +417,7 @@ class ClangObject(object):
         return self._as_parameter_
 
 class CXUnsavedFile(Structure):
-    """Helper for passing unsaved file arguments."""
+    """Represents a CXUnsavedFile struct."""
     _fields_ = [
         ('name', c_char_p),
         ('contents', c_char_p),
