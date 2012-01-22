@@ -978,7 +978,7 @@ class SourceLocation(object):
         return SourceLocation(structure=res, tu=tu)
 
     @staticmethod
-    def from_position(tu, file, line, column):
+    def from_position(tu, filename, line, column):
         """DEPRECATED Obtain a SourceLocation associated with a given
         file/line/column in a translation unit.
 
@@ -987,10 +987,10 @@ class SourceLocation(object):
         """
         warnings.warn('Switch to SourceLocation() constructor.',
                 DeprecationWarning)
-        return SourceLocation(tu=tu, source=file, line=line, column=column)
+        return SourceLocation(tu=tu, source=filename, line=line, column=column)
 
     @staticmethod
-    def from_offset(tu, file, offset):
+    def from_offset(tu, filename, offset):
         """DEPRECATED Retrieve a SourceLocation from a given character offset.
 
         tu -- TranslationUnit file belongs to
@@ -999,7 +999,7 @@ class SourceLocation(object):
         """
         warnings.warn('Switch to SourceLocation() constructor.',
                 DeprecationWarning)
-        return SourceLocation(tu=tu, source=file, offset=offset)
+        return SourceLocation(tu=tu, source=filename, offset=offset)
 
 class SourceRange(object):
     """Describe a range over two source locations within source code.
@@ -2160,7 +2160,7 @@ class CCRStructure(Structure):
 
         return self.results[key]
 
-class CodeCompletionResults(ClangObject):
+class CodeCompletionResults(object):
     """Represents the results of a code completion request."""
     def __init__(self, ptr):
         assert isinstance(ptr, POINTER(CCRStructure)) and ptr
@@ -2431,7 +2431,8 @@ class TranslationUnit(ClangObject):
         length_info = (lib.clang_getNumDiagnostics, [self])
         index_info = (lib.clang_getDiagnostic, [self, None], 1, normalize)
 
-        return ClangContainer(length_info=length_info, get_index_info=index_info)
+        return ClangContainer(length_info=length_info,
+                              get_index_info=index_info)
 
     def reparse(self, unsaved_files=None, options=0):
         """Reparse an already parsed translation unit.
@@ -3124,35 +3125,39 @@ def register_functions(lib):
     lib.clang_tokenize.argtypes = [TranslationUnit, SourceRange.CXSourceRange,
             POINTER(POINTER(Token.CXToken)), POINTER(c_uint)]
 
-    lib.clang_visitChildren.argtypes = [Cursor.CXCursor, callbacks['cursor_visit'],
-            py_object]
+    lib.clang_visitChildren.argtypes = [Cursor.CXCursor,
+                                        callbacks['cursor_visit'],
+                                        py_object]
     lib.clang_visitChildren.restype = c_uint
 
 register_functions(lib)
 
-# Register enumerations.
-for name, value in enumerations.CursorKinds:
-    CursorKind.register(value, name)
-
-for label, value in enumerations.CXXAccessSpecifiers:
-    CXXAccessSpecifier.register(value, label)
-
-for name, value in enumerations.TokenKinds:
-    TokenKind.register(value, name)
-
-for name, value in enumerations.TypeKinds:
-    TypeKind.register(value, name)
-
-for value, name in enumerations.ResourceUsageKinds:
-    ResourceUsageKind.register(value, name)
-
 completionChunkKindMap = {}
-for value, name in enumerations.CompletionChunkKinds:
-    completionChunkKindMap[value] = CompletionChunk.Kind(name)
-
 availabilityKinds = {}
-for value, name in enumerations.AvailabilityKinds:
-    availabilityKinds[value] = CompletionChunk.Kind(name)
+
+def register_enumerations(completion, availability):
+    for name, value in enumerations.CursorKinds:
+        CursorKind.register(value, name)
+
+    for label, value in enumerations.CXXAccessSpecifiers:
+        CXXAccessSpecifier.register(value, label)
+
+    for name, value in enumerations.TokenKinds:
+        TokenKind.register(value, name)
+
+    for name, value in enumerations.TypeKinds:
+        TypeKind.register(value, name)
+
+    for value, name in enumerations.ResourceUsageKinds:
+        ResourceUsageKind.register(value, name)
+
+    for value, name in enumerations.CompletionChunkKinds:
+        completion[value] = CompletionChunk.Kind(name)
+
+    for value, name in enumerations.AvailabilityKinds:
+        availability[value] = CompletionChunk.Kind(name)
+
+register_enumerations(completionChunkKindMap, availabilityKinds)
 
 __all__ = [
     'CodeCompletionResults',
