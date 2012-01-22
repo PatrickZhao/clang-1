@@ -971,9 +971,7 @@ class SourceLocation(object):
                 tu = arg.translation_unit
                 break
 
-        if tu is None:
-            raise Exception('TranslationUnit not found when creating '
-                             'SourceLocation.')
+        assert tu is not None
 
         return SourceLocation(structure=res, tu=tu)
 
@@ -1107,9 +1105,7 @@ class SourceRange(object):
                 tu = arg.translation_unit
                 break
 
-        if tu is None:
-            raise Exception('TranslationUnit not found when creating '
-                            'SourceRange.')
+        assert tu is not None
 
         return SourceRange(structure=res, tu=tu)
 
@@ -1910,8 +1906,7 @@ class Type(object):
                 tu = arg.translation_unit
                 break
 
-        if tu is None:
-            raise Exception('TranslationUnit not found when creating Type.')
+        assert tu is not None
 
         return Type(structure=res, tu=tu)
 
