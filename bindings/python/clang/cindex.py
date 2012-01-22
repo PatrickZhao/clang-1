@@ -1595,11 +1595,6 @@ class Cursor(object):
         return File(obj=lib.clang_getIncludedFile(self._struct),
                     tu=self.translation_unit)
 
-    @property
-    def translation_unit(self):
-        """Returns the TranslationUnit to which this Cursor belongs."""
-        return self._struct.translation_unit
-
     def get_children(self, recurse=False):
         """Return an iterator for accessing the children of this cursor.
 
