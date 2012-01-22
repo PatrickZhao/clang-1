@@ -334,3 +334,17 @@ def test_cxx_access_specifier():
     assert spec is not None
     assert spec.access_specifier == CXXAccessSpecifier.PROTECTED
     assert foo.access_specifier == CXXAccessSpecifier.INVALID
+
+def test_translation_unit():
+    """Ensure Cursor.translation_unit works."""
+
+    tu = get_tu('int foo;')
+    foo = None
+    for cursor in tu.cursor.get_children(recurse=True):
+        if cursor.spelling == 'foo':
+            foo = cursor
+
+    assert foo is not None
+    tu2 = foo.translation_unit
+    assert isinstance(tu2, TranslationUnit)
+    assert tu == tu2
