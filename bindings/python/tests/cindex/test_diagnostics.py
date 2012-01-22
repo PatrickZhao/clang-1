@@ -33,11 +33,15 @@ def test_diagnostic_fixit():
     assert tu.diagnostics[0].location.column == 26
     assert tu.diagnostics[0].spelling.startswith('use of GNU old-style')
     assert len(tu.diagnostics[0].fixits) == 1
-    assert tu.diagnostics[0].fixits[0].range.start.line == 1
-    assert tu.diagnostics[0].fixits[0].range.start.column == 26
-    assert tu.diagnostics[0].fixits[0].range.end.line == 1
-    assert tu.diagnostics[0].fixits[0].range.end.column == 30
-    assert tu.diagnostics[0].fixits[0].value == '.f0 = '
+    fixit = tu.diagnostics[0].fixits[0]
+    assert fixit.range.start.line == 1
+    assert fixit.range.start.column == 26
+    assert fixit.range.end.line == 1
+    assert fixit.range.end.column == 30
+    assert fixit.value == '.f0 = '
+    eq_(repr(fixit), "<FixIt range <SourceRange start <SourceLocation file "
+                     "'INPUT.c', line 1, column 26>, end <SourceLocation file "
+                     "'INPUT.c', line 1, column 30>>, value '.f0 = '>")
 
 def test_diagnostic_range():
     tu = get_tu('void f() { int i = "a" + 1; }')
