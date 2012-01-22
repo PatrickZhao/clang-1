@@ -1599,11 +1599,15 @@ class Cursor(object):
         """Returns the TranslationUnit to which this Cursor belongs."""
         return self._struct.translation_unit
 
-    def get_children(self):
-        """Return an iterator for accessing the children of this cursor."""
+    def get_children(self, recurse=False):
+        """Return an iterator for accessing the children of this cursor.
 
-        # TODO Support recursion.
-        # TODO Implement as true iterator without buffering.
+        By default, the iterator iterates over Cursor instances that are the
+        direct children of the current Cursor. If recurse is True, the iterator
+        iterates over all descendents as it visits a cursor. i.e. you will get
+        a child, then grandchildren, before moving on to to the next child.
+        """
+
         # FIXME: Expose iteration from CIndex, PR6125.
         def visitor(child, parent, children):
             """Callback executed for each child cursor."""
@@ -1614,7 +1618,11 @@ class Cursor(object):
 
             children.append(cursor)
 
+            if recurse:
+                return 2
+
             return 1 # continue
+
         children = []
         lib.clang_visitChildren(self._struct,
                                 callbacks['cursor_visit'](visitor),
