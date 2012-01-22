@@ -1190,9 +1190,11 @@ class Diagnostic(object):
         fix_range = SourceRange.CXSourceRange()
 
         def get_args(key):
+            """Callback to return argument list for ClangContainer."""
             return [self, key, byref(fix_range)]
 
         def normalize(result):
+            """Callback to convert the result value for ClangContainer."""
             assert len(result) > 0
 
             new_range = SourceRange(structure=fix_range, tu=self._tu)
@@ -2423,6 +2425,7 @@ class TranslationUnit(ClangObject):
         indexable.
         """
         def normalize(result):
+            """Callback to convert result value for ClangContainer."""
             if not result:
                 raise IndexError
 
@@ -3136,6 +3139,10 @@ completionChunkKindMap = {}
 availabilityKinds = {}
 
 def register_enumerations(completion, availability):
+    """Registers enumerations with classes.
+
+    This should be called during module load and only during module load.
+    """
     for name, value in enumerations.CursorKinds:
         CursorKind.register(value, name)
 
