@@ -80,3 +80,12 @@ def test_diagnostic_option():
 
     assert d.option == '-Wunused-parameter'
     assert d.disable_option == '-Wno-unused-parameter'
+
+def test_repr():
+    """Ensure repr(Diagnostic) formats properly."""
+
+    tu = get_tu('''int f(int i) { return 7; }''', all_warnings=True)
+    r = repr(tu.diagnostics[0])
+
+    assert r == "<Diagnostic severity 2, location <SourceLocation file \'INPUT.c\'," \
+           " line 1, column 11>, spelling \"unused parameter \'i\'\">"
