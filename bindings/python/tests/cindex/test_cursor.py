@@ -1,5 +1,6 @@
 import gc
 
+from clang.cindex import CXXAccessSpecifier
 from clang.cindex import CursorKind
 from clang.cindex import TranslationUnit
 from clang.cindex import TypeKind
@@ -303,3 +304,33 @@ class B_child : B {};
 
 def test_overloaded_declarations():
     raise SkipTest('Test for overloaded cursor declarations not implemented.')
+
+def test_usr():
+    """Ensure that Cursor.usr works."""
+
+    tu = get_tu('class X { void foo(); };', lang='cpp')
+    foo = None
+
+    for cursor in tu.cursor.get_children(recurse=True):
+        if cursor.spelling == 'foo':
+            foo = cursor
+            break
+
+    assert foo is not None
+    assert foo.usr, 'c:@C@X@F@foo#'
+
+def test_cxx_access_specifier():
+    """Ensure that Cursor.access_specifier works."""
+    tu = get_tu('class X { protected:\n void foo(); };', lang='cpp')
+
+    foo, spec = None, None
+    for cursor in tu.cursor.get_children(recurse=True):
+        if cursor.kind == CursorKind.CXX_ACCESS_SPEC_DECL:
+            spec = cursor
+        elif cursor.spelling == 'foo':
+            foo = cursor
+
+    assert foo is not None
+    assert spec is not None
+    assert spec.access_specifier == CXXAccessSpecifier.PROTECTED
+    assert foo.access_specifier == CXXAccessSpecifier.INVALID
