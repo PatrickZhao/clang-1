@@ -1863,7 +1863,7 @@ class Type(object):
         """
         Retrieve the result type associated with a function type.
         """
-        return lib.clang_getResultType(self._struct)
+        return self.result_type
 
     def get_array_element_type(self):
         """
