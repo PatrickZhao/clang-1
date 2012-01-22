@@ -1,6 +1,7 @@
 from clang.cindex import File
 from clang.cindex import Index
 from nose.plugins.skip import SkipTest
+from nose.tools import ok_
 from nose.tools import raises
 
 def test_file():
@@ -34,4 +35,13 @@ def test_unknown_file():
     index = Index.create()
     tu = index.parse('t.c', unsaved_files=[('t.c', 'int foo;')])
 
-    f = File(filename='foo.c', tu=tu)
+    File(filename='foo.c', tu=tu)
+
+def test_from_name():
+    """Ensure that File.from_name works."""
+
+    index = Index.create()
+    tu = index.parse('t.c', unsaved_files=[('t.c', 'int foo;')])
+
+    f = File.from_name(tu, 't.c')
+    ok_(isinstance(f, File))
