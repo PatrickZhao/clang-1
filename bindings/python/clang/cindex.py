@@ -2190,22 +2190,15 @@ class CodeCompletionResults(ClangObject):
     def diagnostics(self):
         """The diagnostics for this code completion result.
 
-        Returns an iteratable and indexable object holding Diagnostic
-        instances.
+        Returns a ClangContainer of Diagnostic instances.
         """
-        class DiagnosticsItr:
-            """A container for Diagnostic instances."""
-            def __init__(self, ccr):
-                self.ccr = ccr
 
-            def __len__(self):
-                return int(lib.clang_codeCompleteGetNumDiagnostics(self.ccr))
+        length_info = (lib.clang_codeCompleteGetNumDiagnostics, self)
+        index_info = (lib.clang_codeCompleteGetDiagnostic, [self, None], 1,
+                      None)
 
-            def __getitem__(self, key):
-                return lib.clang_codeCompleteGetDiagnostic(self.ccr, key)
-
-        return DiagnosticsItr(self)
-
+        return ClangContainer(length_info=length_info,
+                              get_index_info=index_info)
 
 class Index(ClangObject):
     """The main interface to the Clang CIndex library.
@@ -2503,6 +2496,8 @@ class TranslationUnit(ClangObject):
         as unsaved_files, the first items should be the filenames to be mapped
         and the second should be the contents to be substituted for the
         file. The contents may be passed as strings or file objects.
+
+        Returns a CodeCompletionResults instance.
         """
         if unsaved_files is None:
             unsaved_files = []
