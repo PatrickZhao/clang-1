@@ -1,5 +1,7 @@
-from clang.cindex import Index, File
+from clang.cindex import File
+from clang.cindex import Index
 from nose.plugins.skip import SkipTest
+from nose.tools import raises
 
 def test_file():
   index = Index.create()
@@ -24,3 +26,12 @@ int foo();
 
     raise SkipTest("is_multiple_include_guarded doesn't seem to work.")
     assert file.is_multiple_include_guarded
+
+@raises(Exception)
+def test_unknown_file():
+    """Ensure that constructing a file not in a TU raises."""
+
+    index = Index.create()
+    tu = index.parse('t.c', unsaved_files=[('t.c', 'int foo;')])
+
+    f = File(filename='foo.c', tu=tu)
