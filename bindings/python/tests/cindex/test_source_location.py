@@ -1,13 +1,11 @@
+from clang.cindex import Cursor
 from clang.cindex import File
-from clang.cindex import Index
 from clang.cindex import SourceLocation
-from clang.cindex import TranslationUnit
-from nose.tools import eq_
 from nose.tools import raises
+from .util import get_cursor
+from .util import get_tu
 
-def get_tu():
-    index = Index.create()
-    return index.parse('t.c', unsaved_files=[('t.c', 'int i;')])
+default_input = 'int one;\nint two;\n'
 
 @raises(ValueError)
 def test_invalid_arguments():
@@ -17,7 +15,7 @@ def test_invalid_arguments():
 @raises(Exception)
 def test_invalid_source_type():
     """Ensure invalid source argument type is detected."""
-    SourceLocation(source=[0], tu=get_tu(), line=1, column=1)
+    SourceLocation(source=[0], tu=get_tu(default_input), line=1, column=1)
 
 @raises(ValueError)
 def test_source_without_tu():
@@ -32,34 +30,35 @@ def test_missing_column_argument():
 def test_valid_constructor():
     """Ensure proper constructor use works."""
 
-    SourceLocation(source='t.c', line=1, column=1, tu=get_tu())
-    SourceLocation(source='t.c', offset=2, tu=get_tu())
+    SourceLocation(source='t.c', line=1, column=1, tu=get_tu(default_input))
+    SourceLocation(source='t.c', offset=2, tu=get_tu(default_input))
 
 def test_properties():
     """Ensure properties work as expected."""
 
-    loc = SourceLocation(source='t.c', line=1, column=1, tu=get_tu())
+    loc = SourceLocation(source='t.c', line=1, column=1,
+            tu=get_tu(default_input))
 
-    eq_(loc.line, 1)
-    eq_(loc.column, 1)
-    eq_(loc.offset, 0)
+    assert loc.line == 1
+    assert loc.column == 1
+    assert loc.offset == 0
 
 def test_invalid_location():
     """Ensure locations past end of input get adjusted."""
 
-    loc = SourceLocation(source='t.c', tu=get_tu(), line=5, column=2)
+    loc = SourceLocation(source='t.c', tu=get_tu('int i;'), line=5, column=2)
 
-    eq_(loc.line, 1)
-    eq_(loc.column, 6)
-    eq_(loc.offset, 5)
+    assert loc.line == 1
+    assert loc.column == 6
+    assert loc.offset == 5
 
 def test_repr():
     """Ensure repr format is proper."""
 
-    loc = SourceLocation(source='t.c', tu=get_tu(), line=1, column=1)
+    loc = SourceLocation(source='t.c', tu=get_tu(default_input), line=1, column=1)
     r = repr(loc)
 
-    eq_(r, "<SourceLocation file 't.c', line 1, column 1>")
+    assert r == "<SourceLocation file 't.c', line 1, column 1>"
 
 def test_flavor_access():
     """Ensure different SourceLocation flavors work properly."""
@@ -69,8 +68,7 @@ def test_flavor_access():
 int foo = 2;
 """
 
-    index = Index.create()
-    tu = index.parse('t.c', unsaved_files=[('t.c', source)])
+    tu = get_tu(source)
     loc = SourceLocation(source='t.c', tu=tu, line=3, column=4)
 
     expansion = loc.expansion_location
@@ -105,8 +103,7 @@ def test_presumed_location():
 int i;
 """
 
-    index = Index.create()
-    tu = index.parse('t.c', unsaved_files=[('t.c', source)])
+    tu = get_tu(source)
     loc = SourceLocation(source='t.c', tu=tu, line=3, column=1)
     presumed = loc.presumed_location
 
@@ -117,3 +114,62 @@ int i;
 
     assert presumed[1] == 100
     assert loc.line == 3
+
+def assert_location(loc, line, column, offset):
+    assert loc.line == line
+    assert loc.column == column
+    assert loc.offset == offset
+
+def test_location_from_cursor():
+    tu = get_tu(default_input)
+
+    one = get_cursor(tu, 'one')
+    two = get_cursor(tu, 'two')
+
+    assert one is not None
+    assert two is not None
+
+    assert_location(one.location,line=1,column=5,offset=4)
+    assert_location(two.location,line=2,column=5,offset=13)
+
+    # adding a linebreak at top should keep columns same
+    tu = get_tu('\n' + default_input)
+    one = get_cursor(tu, 'one')
+    two = get_cursor(tu, 'two')
+
+    assert one is not None
+    assert two is not None
+
+    assert_location(one.location,line=2,column=5,offset=5)
+    assert_location(two.location,line=3,column=5,offset=14)
+
+    # adding a space should affect column on first line only
+    tu = get_tu(' ' + default_input)
+    one = get_cursor(tu, 'one')
+    two = get_cursor(tu, 'two')
+
+    assert_location(one.location,line=1,column=6,offset=5)
+    assert_location(two.location,line=2,column=5,offset=14)
+
+    # define the expected location ourselves and see if it matches
+    # the returned location
+    tu = get_tu(default_input)
+
+    file = File(filename='t.c', tu=tu)
+    location = SourceLocation.from_position(tu, file, 1, 5)
+    cursor = Cursor.from_location(tu, location)
+
+    one = get_cursor(tu, 'one')
+    assert one is not None
+    assert one == cursor
+
+    # Ensure locations referring to the same entity are equivalent.
+    location2 = SourceLocation.from_position(tu, file, 1, 5)
+    assert location == location2
+    location3 = SourceLocation.from_position(tu, file, 1, 4)
+    assert location2 != location3
+
+    offset_location = SourceLocation.from_offset(tu, file, 5)
+    cursor = Cursor.from_location(tu, offset_location)
+    for n in [n for n in tu.cursor.get_children() if n.spelling == 'one']:
+        assert n == cursor
