@@ -209,7 +209,7 @@ import collections
 import platform
 import warnings
 
-def get_cindex_library():
+def get_cindex_library(): # pragma: no cover
     """Obtain a reference to the libclang library.
 
     This attempts to find libclang in the default library search directories.
@@ -303,7 +303,7 @@ class CachedProperty(object):
         self.wrapped = wrapped
         try:
             self.__doc__ = wrapped.__doc__
-        except:
+        except: # pragma: no cover
             pass
 
     def __get__(self, instance, instance_type=None):
