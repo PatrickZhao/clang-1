@@ -209,6 +209,10 @@ CursorKinds = [
 # that has not yet been resolved to a specific function or function template.
 ('OVERLOADED_DECL_REF', 49),
 
+# A reference to a variable that occurs in some non-expression context, e.g.
+# a C++ lambda capture list.
+('VARIABLE_REF', 50),
+
 ###
 # Invalid/Error Kinds
 
@@ -391,6 +395,9 @@ CursorKinds = [
 # Represents an expression that computes the length of a parameter
 # pack.
 ('SIZE_OF_PACK_EXPR', 143),
+
+# Represents a C++ lambda expression that produces a local function object.
+('LAMBDA_EXPR', 144),
 
 # A statement whose specific kind is not exposed via this interface.
 #
