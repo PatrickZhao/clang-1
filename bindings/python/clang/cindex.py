@@ -1676,6 +1676,105 @@ class Type(Structure):
     def __ne__(self, other):
         return not self.__eq__(other)
 
+class TokenKind(object):
+    """Describes the kind of token."""
+
+    # The unique kind objects, indexed by id.
+    _kinds = []
+    _name_map = None
+
+    def __init__(self, value):
+        if value >= len(TokenKind._kinds):
+            TokenKind._kinds += [None] * (value - len(TokenKind._kinds) + 1)
+        if TokenKind._kinds[value] is not None:
+            raise ValueError,'TokenKind already loaded'
+        self.value = value
+        TokenKind._kinds[value] = self
+        TokenKind._name_map = None
+
+    @property
+    def name(self):
+        """Get the enumeration name of this token kind."""
+        if self._name_map is None:
+            self._name_map = {}
+            for key,value in TokenKind.__dict__.items():
+                if isinstance(value,TokenKind):
+                    self._name_map[value] = key
+        return self._name_map[self]
+
+    @staticmethod
+    def from_result(res, fn, args):
+        return TokenKind.from_id(res)
+
+    @staticmethod
+    def from_id(value):
+        if value >= len(TokenKind._kinds) or TokenKind._kinds[value] is None:
+            raise ValueError,'Unknown token kind %d' % value
+        return TokenKind._kinds[value]
+
+    def __repr__(self):
+        return 'TokenKind.%s' % (self.name,)
+
+TokenKind.PUNCTUATION = TokenKind(0)
+TokenKind.KEYWORD = TokenKind(1)
+TokenKind.IDENTIFIER = TokenKind(2)
+TokenKind.LITERAL = TokenKind(3)
+TokenKind.COMMENT = TokenKind(4)
+
+class Token(Structure):
+    """Represents a token from a source file.
+
+    A token is an entity extracted by the parser. These include things like
+    keywords, identifiers, comments, etc.
+
+    Token instances can be obtained by calling TranslationUnit.get_tokens().
+    The API does not support direct creation of tokens. While it is possible,
+    you shouldn't do it.
+    """
+
+    _fields_ = [("int_data", c_uint * 4), ("ptr_data", c_void_p)]
+
+    @property
+    def kind(self):
+        """The TokenKind for this token."""
+        if not hasattr(self, '_kind'):
+            self._kind = Token_get_kind(self)
+
+        return self._kind
+
+    @property
+    def spelling(self):
+        """The spelling for this token.
+
+        This is the literal text defining the token.
+        """
+        if not hasattr(self, '_spelling'):
+            self._spelling = Token_get_spelling(self._tu, self)
+
+        return self._spelling
+
+    @property
+    def location(self):
+        """The location of this token.
+
+        Returns a SourceLocation instance.
+        """
+        if not hasattr(self, '_location'):
+            self._location = Token_get_location(self._tu, self)
+
+        return self._location
+
+    @property
+    def extent(self):
+        """The source locations this token occupies.
+
+        Returns a SourceRange instance.
+        """
+        if not hasattr(self, '_extent'):
+            self._extent = Token_get_extent(self._tu, self)
+
+        return self._extent
+
 ## CIndex Objects ##
 
 # CIndex objects (derived from ClangObject) are essentially lightweight
@@ -2247,6 +2346,56 @@ class TranslationUnit(ClangObject):
             return CodeCompletionResults(ptr)
         return None
 
+    def get_tokens(self, start_location=None, end_location=None,
+                   sourcerange=None):
+        """Obtain tokens in the translation unit.
+
+        This is a generator for Token instances.
+
+        To restrict tokens to a subset of source code, define both
+        start_location and end_location (they are SourceLocation instances) or
+        define sourcerange, which is a SourceRange instance.
+        """
+        use_range = None
+        if sourcerange is not None:
+            assert(isinstance(sourcerange, SourceRange))
+            use_range = sourcerange
+        elif start_location is not None and end_location is not None:
+            assert(isinstance(start_location, SourceLocation))
+            assert(isinstance(end_location, SourceLocation))
+            use_range = SourceRange.from_locations(start_location, end_location)
+        else:
+            raise Exception("Must supply sourcerange or locations.")
+
+        # The allocated memory during clang_tokenize() merely holds a copy of
+        # the structs. We make a copy of each array element and then release
+        # the original block so Python can manage each token instance
+        # independently.
+
+        # TODO there is probably a more efficient way to copy the data without
+        # having to create an original Token instance.
+        memory = POINTER(Token)()
+        number = c_uint()
+        Token_tokenize(self, use_range, byref(memory), byref(number))
+
+        count = int(number.value)
+        tokens_p = cast(memory, POINTER(Token * count)).contents
+        tokens = [None] * count
+
+        for i in range(0, count):
+            original = tokens_p[i]
+            copy = Token()
+            copy.int_data = original.int_data
+            copy.ptr_data = original.ptr_data
+            copy._tu = self
+
+            tokens[i] = copy
+
+        Token_dispose_tokens(self, memory, number)
+
+        for token in tokens:
+            yield token
+
 class File(ClangObject):
     """
     The File class represents a particular source file that is part of a
@@ -2606,6 +2755,32 @@ Type_equal = lib.clang_equalTypes
 Type_equal.argtypes = [Type, Type]
 Type_equal.restype = bool
 
+# Token Functions
+Token_get_kind = lib.clang_getTokenKind
+Token_get_kind.argtype = [Token]
+Token_get_kind.restype = c_uint
+Token_get_kind.errcheck = TokenKind.from_result
+
+Token_get_spelling = lib.clang_getTokenSpelling
+Token_get_spelling.argtype = [TranslationUnit, Token]
+Token_get_spelling.restype = _CXString
+Token_get_spelling.errcheck = _CXString.from_result
+
+Token_get_location = lib.clang_getTokenLocation
+Token_get_location.argtype = [TranslationUnit, Token]
+Token_get_location.restype = SourceLocation
+
+Token_get_extent = lib.clang_getTokenExtent
+Token_get_extent.argtype = [TranslationUnit, Token]
+Token_get_extent.restype = SourceRange
+
+Token_tokenize = lib.clang_tokenize
+Token_tokenize.argtype = [TranslationUnit, SourceRange,
+                          POINTER(POINTER(Token)), POINTER(c_uint)]
+
+Token_dispose_tokens = lib.clang_disposeTokens
+Token_dispose_tokens.argtype = [TranslationUnit, POINTER(Token), c_uint]
+
 # Index Functions
 Index_create = lib.clang_createIndex
 Index_create.argtypes = [c_int, c_int]
@@ -2725,6 +2900,8 @@ __all__ = [
     'Index',
     'SourceLocation',
     'SourceRange',
+    'Token',
+    'TokenKind',
     'TranslationUnitLoadError',
     'TranslationUnit',
     'TypeKind',
