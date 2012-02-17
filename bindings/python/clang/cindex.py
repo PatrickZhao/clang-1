@@ -162,7 +162,7 @@ class _CXString(Structure):
         lib.clang_disposeString(self)
 
     @staticmethod
-    def from_result(res, fn, args):
+    def from_result(res, func, args):
         assert isinstance(res, _CXString)
         return lib.clang_getCString(res)
 
@@ -349,7 +349,8 @@ class Diagnostic(object):
 
             def __getitem__(self, key):
                 range = SourceRange()
-                value = lib.clang_getDiagnosticFixIt(self.diag, key, byref(range))
+                value = lib.clang_getDiagnosticFixIt(self.diag, key,
+                        byref(range))
                 if len(value) == 0:
                     raise IndexError
 
@@ -385,7 +386,7 @@ class Diagnostic(object):
             self.severity, self.location, self.spelling)
 
     def from_param(self):
-      return self.ptr
+        return self.ptr
 
 class FixIt(object):
     """
@@ -469,8 +470,8 @@ class CursorKind(object):
         """Get the enumeration name of this cursor kind."""
         if self._name_map is None:
             self._name_map = {}
-            for key,value in CursorKind.__dict__.items():
-                if isinstance(value,CursorKind):
+            for key, value in CursorKind.__dict__.items():
+                if isinstance(value, CursorKind):
                     self._name_map[value] = key
         return self._name_map[self]
 
@@ -1361,7 +1362,8 @@ class Cursor(Structure):
             children.append(child)
             return 1 # continue
         children = []
-        lib.clang_visitChildren(self, callbacks['cursor_visit'](visitor), children)
+        lib.clang_visitChildren(self, callbacks['cursor_visit'](visitor),
+                children)
         return iter(children)
 
     def get_reference_name_extent(self,
@@ -1410,7 +1412,7 @@ class Cursor(Structure):
         raise Exception('Not yet implemented.')
 
     @staticmethod
-    def from_result(res, fn, args):
+    def from_result(res, func, args):
         assert isinstance(res, Cursor)
         # FIXME: There should just be an isNull method.
         if res == lib.clang_getNullCursor():
@@ -1434,7 +1436,7 @@ class Cursor(Structure):
         return res
 
     @staticmethod
-    def from_cursor_result(res, fn, args):
+    def from_cursor_result(res, func, args):
         assert isinstance(res, Cursor)
         if res == lib.clang_getNullCursor():
             return None
@@ -1470,8 +1472,8 @@ class TypeKind(object):
         """Get the enumeration name of this cursor kind."""
         if self._name_map is None:
             self._name_map = {}
-            for key,value in TypeKind.__dict__.items():
-                if isinstance(value,TypeKind):
+            for key, value in TypeKind.__dict__.items():
+                if isinstance(value, TypeKind):
                     self._name_map[value] = key
         return self._name_map[self]
 
@@ -1619,7 +1621,7 @@ class Type(Structure):
         return self._tu
 
     @staticmethod
-    def from_result(res, fn, args):
+    def from_result(res, func, args):
         assert isinstance(res, Type)
 
         tu = None
@@ -1739,13 +1741,13 @@ class TokenKind(object):
         """Get the enumeration name of this token kind."""
         if self._name_map is None:
             self._name_map = {}
-            for key,value in TokenKind.__dict__.items():
-                if isinstance(value,TokenKind):
+            for key, value in TokenKind.__dict__.items():
+                if isinstance(value, TokenKind):
                     self._name_map[value] = key
         return self._name_map[self]
 
     @staticmethod
-    def from_result(res, fn, args):
+    def from_result(res, func, args):
         return TokenKind.from_id(res)
 
     @staticmethod
@@ -1883,24 +1885,24 @@ class CompletionChunk:
         res = lib.clang_getCompletionChunkCompletionString(self.cs, self.key)
 
         if (res):
-          return CompletionString(res)
+            return CompletionString(res)
         else:
-          None
+            None
 
     def isKindOptional(self):
-      return self.kind == completionChunkKindMap[0]
+        return self.kind == completionChunkKindMap[0]
 
     def isKindTypedText(self):
-      return self.kind == completionChunkKindMap[1]
+        return self.kind == completionChunkKindMap[1]
 
     def isKindPlaceHolder(self):
-      return self.kind == completionChunkKindMap[3]
+        return self.kind == completionChunkKindMap[3]
 
     def isKindInformative(self):
-      return self.kind == completionChunkKindMap[4]
+        return self.kind == completionChunkKindMap[4]
 
     def isKindResultType(self):
-      return self.kind == completionChunkKindMap[15]
+        return self.kind == completionChunkKindMap[15]
 
 completionChunkKindMap = {
             0: CompletionChunk.Kind("Optional"),
@@ -2009,7 +2011,7 @@ class CodeCompletionResults(ClangObject):
     def diagnostics(self):
         class DiagnosticsItr:
             def __init__(self, ccr):
-                self.ccr= ccr
+                self.ccr = ccr
 
             def __len__(self):
                 return int(lib.clang_codeCompleteGetNumDiagnostics(self.ccr))
@@ -2064,9 +2066,9 @@ class ResourceUsageKind(object):
 
     __slots__ = ('id', '_name')
 
-    def __init__(self, id):
-        assert id in ResourceUsageKind._kinds
-        self.id = id
+    def __init__(self, value):
+        assert value in ResourceUsageKind._kinds
+        self.id = value
         self._name = None
 
     @property
@@ -2078,8 +2080,8 @@ class ResourceUsageKind(object):
         return self._name
 
     @staticmethod
-    def register(id, name):
-        ResourceUsageKind._kinds[id] = name
+    def register(value, name):
+        ResourceUsageKind._kinds[value] = name
 
     def __repr__(self):
         return 'ResourceUsageKind.%s' % ResourceUsageKind._kinds[self.id]
@@ -2337,7 +2339,7 @@ class TranslationUnit(ClangObject):
         unsaved_files_array = 0
         if len(unsaved_files):
             unsaved_files_array = (_CXUnsavedFile * len(unsaved_files))()
-            for i,(name,value) in enumerate(unsaved_files):
+            for i, (name, value) in enumerate(unsaved_files):
                 if not isinstance(value, str):
                     # FIXME: It would be great to support an efficient version
                     # of this, one day.
@@ -2388,7 +2390,7 @@ class TranslationUnit(ClangObject):
         unsaved_files_array = 0
         if len(unsaved_files):
             unsaved_files_array = (_CXUnsavedFile * len(unsaved_files))()
-            for i,(name,value) in enumerate(unsaved_files):
+            for i, (name, value) in enumerate(unsaved_files):
                 if not isinstance(value, str):
                     # FIXME: It would be great to support an efficient version
                     # of this, one day.
@@ -2474,6 +2476,10 @@ class File(ClangObject):
 
     __slots__ = ('_tu')
 
+    def __init__(self, obj):
+        ClangObject.__init__(self, obj)
+        self._tu = None
+
     @staticmethod
     def from_name(translation_unit, file_name):
         """Retrieve a file handle within the given translation unit."""
@@ -2483,7 +2489,7 @@ class File(ClangObject):
         return f
 
     @staticmethod
-    def from_cursor_result(res, fn, args):
+    def from_cursor_result(res, func, args):
         assert isinstance(res, File)
 
         # Copy a reference to the TranslationUnit to prevent premature GC.
