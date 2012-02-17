@@ -332,6 +332,274 @@ class CXString(Structure):
         assert isinstance(res, CXString)
         return lib.clang_getCString(res)
 
+### Classes Defining Enumerations ###
+
+class CXXAccessSpecifier(object):
+    """Describes the C++ access level of a cursor.
+
+    These expose whether a cursor is public, protected, or private. If a cursor
+    doesn't have an access level, its access level is defined as invalid.
+    """
+
+    __slots__ = ('value', 'label')
+
+    _value_map = {}
+
+    def __init__(self, value, label):
+        """Create a CXXAccessSpecifier type.
+
+        To retrieve an existing specifier (which is what you probably want to
+        do since access specifiers are static), call
+        CXXAccessSpecifier.from_value() instead.
+        """
+        self.value = value
+        self.label = label
+
+    def __str__(self):
+        """How this specifier is typed in a source file."""
+        return self.label
+
+    def __repr__(self):
+        """System representation of type."""
+        return 'CXXAccessSpecifier.%s' % self.label.upper()
+
+    @staticmethod
+    def from_value(value):
+        """Obtain a CXXAccessSpecifier from its numeric value.
+
+        This is what you should call to obtain an instance of an existing
+        CXXAccessSpecifier.
+        """
+        result = CXXAccessSpecifier._value_map.get(value, None)
+        if result is None:
+            raise ValueError('Unknown CXXAccessSpecifier: %d' % value)
+
+        return result
+
+    @staticmethod
+    def register(value, label):
+        """Registers a CXXAccessSpecifier enumeration.
+
+        This should only be called at module load time.
+        """
+        if value in CXXAccessSpecifier._value_map:
+            raise ValueError('CXXAccessSPecifier already registered: %d' %
+                    value)
+
+        spec = CXXAccessSpecifier(value, label)
+        CXXAccessSpecifier._value_map[value] = spec
+        setattr(CXXAccessSpecifier, label.upper(), spec)
+
+class CursorKind(object):
+    """Descriptor for the kind of entity that a cursor points to."""
+
+    __slots__ = (
+        'name',
+        'value',
+    )
+
+    _value_map = {} # int -> CursorKind
+
+    def __init__(self, value, name):
+        self.value = value
+        self.name = name
+
+    @staticmethod
+    def from_value(value):
+        result = CursorKind._value_map.get(value, None)
+
+        if result is None:
+            raise ValueError('Unknown CursorKind: %d' % value)
+
+        return result
+
+    def is_declaration(self):
+        """Test if this is a declaration kind."""
+        return lib.clang_isDeclaration(self)
+
+    def is_reference(self):
+        """Test if this is a reference kind."""
+        return lib.clang_isReference(self)
+
+    def is_expression(self):
+        """Test if this is an expression kind."""
+        return lib.clang_isExpression(self)
+
+    def is_statement(self):
+        """Test if this is a statement kind."""
+        return lib.clang_isStatement(self)
+
+    def is_attribute(self):
+        """Test if this is an attribute kind."""
+        return lib.clang_isAttribute(self)
+
+    def is_invalid(self):
+        """Test if this is an invalid kind."""
+        return lib.clang_isInvalid(self)
+
+    def is_translation_unit(self):
+        """Test if this is a translation unit kind."""
+        return lib.clang_isTranslationUnit(self)
+
+    def is_preprocessing(self):
+        """Test if this is a preprocessing kind."""
+        return lib.clang_isPreprocessing(self)
+
+    def is_unexposed(self):
+        """Test if this is an unexposed kind."""
+        return lib.clang_isUnexposed(self)
+
+    def from_param(self):
+        """ctyped helper to convert instance to function argument."""
+        return self.value
+
+    def __repr__(self):
+        return 'CursorKind.%s' % (self.name,)
+
+    @staticmethod
+    def get_all_kinds():
+        """Return all CursorKind enumeration instances."""
+        return CursorKind._value_map.values()
+
+    @staticmethod
+    def register(value, name):
+        """Registers a new kind type.
+
+        This is typically called only at module load time. External users
+        should not need to ever call this.
+        """
+        if value in CursorKind._value_map:
+            raise ValueError('CursorKind already registered: %d' % value)
+
+        kind = CursorKind(value, name)
+        CursorKind._value_map[value] = kind
+        setattr(CursorKind, name, kind)
+
+class ResourceUsageKind(object):
+    """Represents a kind of resource usage."""
+
+    _value_map = {}
+
+    __slots__ = (
+        'name',
+        'value',
+    )
+
+    def __init__(self, value, name):
+        """Create a new resource usage kind instance.
+
+        Since ResourceUsageKinds are static, this should only be done at
+        module load time. i.e. you should not create new instances outside of
+        this module.
+        """
+        self.value = value
+        self.name = name
+
+    @staticmethod
+    def from_value(value):
+        """Obtain a ResourceUsageKind from its numeric value."""
+        result = ResourceUsageKind._value_map.get(value, None)
+
+        if result is None:
+            raise ValueError('Unknown ResourceUsageKind: %d' % value)
+
+        return result
+
+    @staticmethod
+    def register(value, name):
+        kind = ResourceUsageKind(value, name)
+        ResourceUsageKind._value_map[value] = kind
+        setattr(ResourceUsageKind, name, kind)
+
+    def __repr__(self):
+        return 'ResourceUsageKind.%s' % self.name
+
+class TokenKind(object):
+    """Describes a specific type of a Token."""
+
+    _value_map = {} # int -> TokenKind
+
+    def __init__(self, value, name):
+        """Create a new TokenKind instance from a numeric value and a name."""
+        self.value = value
+        self.name = name
+
+    def __repr__(self):
+        return 'TokenKind.%s' % (self.name,)
+
+    @staticmethod
+    def from_value(value):
+        """Obtain a registered TokenKind instance from its value."""
+        result = TokenKind._value_map.get(value, None)
+
+        if result is None:
+            raise ValueError('Unknown TokenKind: %d' % value)
+
+        return result
+
+    @staticmethod
+    def register(value, name):
+        """Register a new TokenKind enumeration.
+
+        This should only be called at module load time by code within this
+        package.
+        """
+        if value in TokenKind._value_map:
+            raise ValueError('TokenKind already registered: %d' % value)
+
+        kind = TokenKind(value, name)
+        TokenKind._value_map[value] = kind
+        setattr(TokenKind, name, kind)
+
+class TypeKind(object):
+    """Describes the kind of type."""
+
+    __slots__ = (
+        'name',
+        'value'
+    )
+
+    _value_map = {}
+
+    def __init__(self, value, name):
+        self.name = name
+        self.value = value
+
+    @property
+    def spelling(self):
+        """Retrieve the spelling of this TypeKind."""
+        return lib.clang_getTypeKindSpelling(self.value)
+
+    def from_param(self):
+        return self.value
+
+    def __repr__(self):
+        return 'TypeKind.%s' % (self.name,)
+
+    @staticmethod
+    def from_value(value):
+        result = TypeKind._value_map.get(value, None)
+
+        if result is None:
+            raise ValueError('Unknown TypeKind: %d' % value)
+
+        return result
+
+    @staticmethod
+    def register(value, name):
+        """Registers a new TypeKind.
+
+        This should not be called outside of the module.
+        """
+        if value in TypeKind._value_map:
+            raise ValueError('TypeKind value already registered: %d' % value)
+
+        kind = TypeKind(value, name)
+        TypeKind._value_map[value] = kind
+        setattr(TypeKind, name, kind)
+
+### Source Location Classes ###
+
 class SourceLocation(object):
     """Represents a particular location within a source file.
 
@@ -729,7 +997,6 @@ class SourceRange(object):
                 DeprecationWarning)
         return SourceRange(start=start, end=end)
 
-
 class Diagnostic(object):
     """
     A Diagnostic is a single instance of a Clang diagnostic. It includes the
@@ -859,148 +1126,6 @@ class FixIt(object):
     def __repr__(self):
         return "<FixIt range %r, value %r>" % (self.range, self.value)
 
-### CXX Access Specifiers ###
-
-class CXXAccessSpecifier(object):
-    """Describes the C++ access level of a cursor.
-
-    These expose whether a cursor is public, protected, or private. If a cursor
-    doesn't have an access level, its access level is defined as invalid.
-    """
-
-    __slots__ = ('value', 'label')
-
-    _value_map = {}
-
-    def __init__(self, value, label):
-        """Create a CXXAccessSpecifier type.
-
-        To retrieve an existing specifier (which is what you probably want to
-        do since access specifiers are static), call
-        CXXAccessSpecifier.from_value() instead.
-        """
-        self.value = value
-        self.label = label
-
-    def __str__(self):
-        """How this specifier is typed in a source file."""
-        return self.label
-
-    def __repr__(self):
-        """System representation of type."""
-        return 'CXXAccessSpecifier.%s' % self.label.upper()
-
-    @staticmethod
-    def from_value(value):
-        """Obtain a CXXAccessSpecifier from its numeric value.
-
-        This is what you should call to obtain an instance of an existing
-        CXXAccessSpecifier.
-        """
-        result = CXXAccessSpecifier._value_map.get(value, None)
-        if result is None:
-            raise ValueError('Unknown CXXAccessSpecifier: %d' % value)
-
-        return result
-
-    @staticmethod
-    def register(value, label):
-        """Registers a CXXAccessSpecifier enumeration.
-
-        This should only be called at module load time.
-        """
-        if value in CXXAccessSpecifier._value_map:
-            raise ValueError('CXXAccessSPecifier already registered: %d' %
-                    value)
-
-        spec = CXXAccessSpecifier(value, label)
-        CXXAccessSpecifier._value_map[value] = spec
-        setattr(CXXAccessSpecifier, label.upper(), spec)
-
-class CursorKind(object):
-    """Descriptor for the kind of entity that a cursor points to."""
-
-    __slots__ = (
-        'name',
-        'value',
-    )
-
-    _value_map = {} # int -> CursorKind
-
-    def __init__(self, value, name):
-        self.value = value
-        self.name = name
-
-    @staticmethod
-    def from_value(value):
-        result = CursorKind._value_map.get(value, None)
-
-        if result is None:
-            raise ValueError('Unknown CursorKind: %d' % value)
-
-        return result
-
-    def is_declaration(self):
-        """Test if this is a declaration kind."""
-        return lib.clang_isDeclaration(self)
-
-    def is_reference(self):
-        """Test if this is a reference kind."""
-        return lib.clang_isReference(self)
-
-    def is_expression(self):
-        """Test if this is an expression kind."""
-        return lib.clang_isExpression(self)
-
-    def is_statement(self):
-        """Test if this is a statement kind."""
-        return lib.clang_isStatement(self)
-
-    def is_attribute(self):
-        """Test if this is an attribute kind."""
-        return lib.clang_isAttribute(self)
-
-    def is_invalid(self):
-        """Test if this is an invalid kind."""
-        return lib.clang_isInvalid(self)
-
-    def is_translation_unit(self):
-        """Test if this is a translation unit kind."""
-        return lib.clang_isTranslationUnit(self)
-
-    def is_preprocessing(self):
-        """Test if this is a preprocessing kind."""
-        return lib.clang_isPreprocessing(self)
-
-    def is_unexposed(self):
-        """Test if this is an unexposed kind."""
-        return lib.clang_isUnexposed(self)
-
-    def from_param(self):
-        """ctyped helper to convert instance to function argument."""
-        return self.value
-
-    def __repr__(self):
-        return 'CursorKind.%s' % (self.name,)
-
-    @staticmethod
-    def get_all_kinds():
-        """Return all CursorKind enumeration instances."""
-        return CursorKind._value_map.values()
-
-    @staticmethod
-    def register(value, name):
-        """Registers a new kind type.
-
-        This is typically called only at module load time. External users
-        should not need to ever call this.
-        """
-        if value in CursorKind._value_map:
-            raise ValueError('CursorKind already registered: %d' % value)
-
-        kind = CursorKind(value, name)
-        CursorKind._value_map[value] = kind
-        setattr(CursorKind, name, kind)
 
 class Cursor(object):
     """An element with the abstract syntax tree of a translation unit.
@@ -1454,55 +1579,6 @@ class Cursor(object):
         """
         warnings.warn('Switch to Cursor() constructor.', DeprecationWarning)
         return Cursor(location=location, tu=tu)
-
-### Type Kinds ###
-
-class TypeKind(object):
-    """Describes the kind of type."""
-
-    __slots__ = (
-        'name',
-        'value'
-    )
-
-    _value_map = {}
-
-    def __init__(self, value, name):
-        self.name = name
-        self.value = value
-
-    @property
-    def spelling(self):
-        """Retrieve the spelling of this TypeKind."""
-        return lib.clang_getTypeKindSpelling(self.value)
-
-    def from_param(self):
-        return self.value
-
-    def __repr__(self):
-        return 'TypeKind.%s' % (self.name,)
-
-    @staticmethod
-    def from_value(value):
-        result = TypeKind._value_map.get(value, None)
-
-        if result is None:
-            raise ValueError('Unknown TypeKind: %d' % value)
-
-        return result
-
-    @staticmethod
-    def register(value, name):
-        """Registers a new TypeKind.
-
-        This should not be called outside of the module.
-        """
-        if value in TypeKind._value_map:
-            raise ValueError('TypeKind value already registered: %d' % value)
-
-        kind = TypeKind(value, name)
-        TypeKind._value_map[value] = kind
-        setattr(TypeKind, name, kind)
 
 class Type(object):
     """The type of an element in the abstract syntax tree."""
@@ -2044,45 +2120,6 @@ class Index(ClangObject):
         """
         return TranslationUnit.from_source(path, args, unsaved_files, options,
                                            self)
-
-class ResourceUsageKind(object):
-    """Represents a kind of resource usage."""
-
-    _value_map = {}
-
-    __slots__ = (
-        'name',
-        'value',
-    )
-
-    def __init__(self, value, name):
-        """Create a new resource usage kind instance.
-
-        Since ResourceUsageKinds are static, this should only be done at
-        module load time. i.e. you should not create new instances outside of
-        this module.
-        """
-        self.value = value
-        self.name = name
-
-    @staticmethod
-    def from_value(value):
-        """Obtain a ResourceUsageKind from its numeric value."""
-        result = ResourceUsageKind._value_map.get(value, None)
-
-        if result is None:
-            raise ValueError('Unknown ResourceUsageKind: %d' % value)
-
-        return result
-
-    @staticmethod
-    def register(value, name):
-        kind = ResourceUsageKind(value, name)
-        ResourceUsageKind._value_map[value] = kind
-        setattr(ResourceUsageKind, name, kind)
-
-    def __repr__(self):
-        return 'ResourceUsageKind.%s' % self.name
 
 class CXTUResourceUsage(Structure):
     """Represents a raw CXTUResourceUsage struct."""
