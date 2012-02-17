@@ -83,6 +83,60 @@ Known Issues and Limitations
   crash.
 """
 
+# Developer Notes
+# ===============
+#
+# Class Types
+# -----------
+#
+# Each class in this module belongs in one of the following buckets:
+#
+#  * Enumeration representation (CursorKind, TokenKind, etc)
+#  * libclang object representation (Cursor, Token, SourceLocation, etc)
+#  * Misc (support classes)
+#
+# Enumeration Classes
+# -------------------
+#
+# Enumeration classes represent enumerations defined in libclang. There are
+# 2 parts to each enumeration class: 1) container for registered class types
+# 2) individual instances of each enumeration.
+#
+# Currently, both share the same Python class. Stuffed inside each class is a
+# static variable holding all registered classes.
+#
+# libclang Object Classes
+# -----------------------
+#
+# These classes map Index.x typedefs to Python objects. There are 2 flavors of
+# these classes. The exact flavor depends on what the underlying typedef is.
+#
+# If a typedef is backed by a struct, the main object class is a child of
+# __builtin__.object. This class contains an inner-class which derives from
+# ctypes.Structure. This inner class has the name of the C struct and defines
+# the fields inside. The inner classes are fully wrapped by the outer/main
+# class and should never be exposed outside of this module. These inner classes
+# are also what gets passed to ctypes for the call into libclang.
+#
+# When returned from a C function, the structure-wrapping inner classes are
+# almost always have an errcheck function registered. The errcheck function
+# typically exists as a "from_struct" static method on the outer class. The
+# job of this method is to take the struct and wrap it inside the outer class,
+# typically be calling the constructor.
+#
+# For typedefs not based on structs, the main representation class is a child
+# of ClangObject. ClangObject contains some common ctypes methods to proxy the
+# Python object to and from a void *.
+#
+# Another property of object classes is that they maintain references to parent
+# objects, typically a TranslationUnit. These references are necessary to
+# prevent premature garbage collection of the parent object, which could cause
+# the backing memory in C to get freed and Python to make a call on invalid
+# memory, which would result in a segfault. If classes are derived from another
+# class and require the parent to exist, the class constructor should be very
+# strict and refuse to create instances if no parent is known.
+
+
 # TODO
 # ====
 #
@@ -117,6 +171,7 @@ from ctypes import Structure
 import collections
 
 import platform
+import warnings
 
 def get_cindex_library():
     """Obtain a reference to the libclang library.
@@ -214,42 +269,147 @@ class _CXString(Structure):
         assert isinstance(res, _CXString)
         return lib.clang_getCString(res)
 
-class SourceLocation(Structure):
+class SourceLocation(object):
+    """Represents a particular location within a source file.
+
+    A SourceLocation points to specific character within a file. The character
+    can be addressed by its file character offset or by a line-column pair.
+
+    Locations can also refer to other locations. For example, for a
+    macro-expanded location, you can get the location of the original macro.
     """
-    A SourceLocation represents a particular location within a source file.
-    """
-    _fields_ = [("ptr_data", c_void_p * 2), ("int_data", c_uint)]
-    _data = None
 
-    def _get_instantiation(self):
-        if self._data is None:
-            f, l, c, o = c_object_p(), c_uint(), c_uint(), c_uint()
-            lib.clang_getInstantiationLocation(self, byref(f), byref(l),
-                    byref(c), byref(o))
-            if f:
-                f = File(f)
-            else:
-                f = None
-            self._data = (f, int(l.value), int(c.value), int(o.value))
-        return self._data
+    class CXSourceLocation(Structure):
+        """Representation of CXSourceLocation structure.
 
-    @staticmethod
-    def from_position(tu, file, line, column):
+        This is an internal class and it should only be used from within this
+        module.
         """
-        Retrieve the source location associated with a given file/line/column in
-        a particular translation unit.
-        """
-        return lib.clang_getLocation(tu, file, line, column)
+        _fields_ = [
+            ('ptr_data', c_void_p * 2),
+            ('int_data', c_uint)
+        ]
 
-    @staticmethod
-    def from_offset(tu, file, offset):
-        """Retrieve a SourceLocation from a given character offset.
+    __slots__ = (
+        '_expansion',
+        '_struct',
+        '_tu',
+    )
 
-        tu -- TranslationUnit file belongs to
-        file -- File instance to obtain offset from
-        offset -- Integer character offset within file
+    def __init__(self,
+                 structure=None,
+                 tu=None,
+                 source=None,
+                 line=None,
+                 column=None,
+                 offset=None):
+        """Create a new SourceLocation instance.
+
+        SourceLocations can be instantiated one of a few ways:
+
+          * Through data structures returned by libclang. Pass the structure
+            and tu arguments.
+          * From a line/column location in a file. Pass the line and column
+            arguments as well as the source file. If the source file is defined
+            as a string filename, you must also pass tu with the TranslationUnit
+            to which this file belongs. If the source file is a File, you do not
+            need to pass a TranslationUnit, as it is obtained from the passed File.
+          * From a character offset in a file. This is similar to the above
+            except instead of passing line and column, pass offset.
+
+        If multiple construction methods are passed, behavior is undefined.
+
+        Arugments:
+
+        structure -- SourceLocation.CXSourceLocation from which to instantiate
+          an instance.
+        tu -- TranslationUnit to which this location belongs. This is optional
+          when source is a File instance.
+        source -- Provided when construction a location manually. Must be the
+          str filename of the source file or a File instance corresponding to
+          the file.
+        line -- int line number of location to construct. The first line in a
+          file is 1.
+        column -- int column number of location to construct. Must be provided
+          with line. The first column in a line is 1.
+        offset -- int character offset in file to construct from. The first
+          character in a file is 0.
         """
-        return lib.clang_getLocationForOffset(tu, file, offset)
+
+        if structure is not None:
+            assert isinstance(structure, SourceLocation.CXSourceLocation)
+
+        if tu is not None:
+            assert isinstance(tu, TranslationUnit)
+
+        if source is not None:
+            assert isinstance(source, (File, str))
+
+        if line is not None:
+            assert line > 0
+
+        if column is not None:
+            assert column > 0
+
+        if offset is not None:
+            assert offset >= 0
+
+        self._expansion = None
+
+        if structure is not None:
+            assert tu is not None
+            self._struct = structure
+            self._tu = tu
+            return
+
+        if source is None:
+            raise ValueError('source or structure argument must be defined.')
+
+        input_file = None
+
+        if isinstance(source, str):
+            if tu is None:
+                raise ValueError('tu must be defined when source is a str.')
+
+            input_file = File.from_name(tu, source)
+        else:
+            input_file = source
+            tu = source.translation_unit
+
+        self._tu = tu
+
+        if line is not None and column is not None:
+            self._struct = lib.clang_getLocation(tu, input_file, line, column)
+            return
+
+        if offset is not None:
+            self._struct = lib.clang_getLocationForOffset(tu, input_file,
+                    offset)
+            return
+
+        raise Exception('No construction sources defined.')
+
+    @property
+    def expansion(self):
+        """Get a 4-tuple of the expansion location of this location.
+
+        The returned tuple has fields (file, line, column, offset). file
+        is a File instance and the rest of the arguments are ints.
+        """
+        if self._expansion is None:
+            f = c_object_p()
+            line, column, offset = c_uint(), c_uint(), c_uint()
+
+            lib.clang_getExpansionLocation(self._struct, byref(f), byref(line),
+                                           byref(column), byref(offset))
+
+            if not f:
+                raise Exception('Could not resolve SourceLocation.')
+
+            self._expansion = (File(f), int(line.value), int(column.value),
+                               int(offset.value))
+
+        return self._expansion
 
     @staticmethod
     def from_offset(tu, file, offset):
@@ -263,26 +423,34 @@ class SourceLocation(Structure):
 
     @property
     def file(self):
-        """Get the file represented by this source location."""
-        return self._get_instantiation()[0]
+        """Get the file represented by this source location.
+
+        Returns a File instance.
+        """
+        return self.expansion[0]
 
     @property
     def line(self):
-        """Get the line represented by this source location."""
-        return self._get_instantiation()[1]
+        """Get the line number represented by this source location."""
+        return self.expansion[1]
 
     @property
     def column(self):
         """Get the column represented by this source location."""
-        return self._get_instantiation()[2]
+        return self.expansion[2]
 
     @property
     def offset(self):
         """Get the file offset represented by this source location."""
-        return self._get_instantiation()[3]
+        return self.expansion[3]
+
+    @property
+    def translation_unit(self):
+        """Get the TranslationUnit to which this location belongs."""
+        return self._tu
 
     def __eq__(self, other):
-        return lib.clang_equalLocations(self, other)
+        return lib.clang_equalLocations(self._struct, other._struct)
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -295,46 +463,182 @@ class SourceLocation(Structure):
         return "<SourceLocation file %r, line %r, column %r>" % (
             filename, self.line, self.column)
 
-class SourceRange(Structure):
-    """
-    A SourceRange describes a range of source locations within the source
-    code.
-    """
-    _fields_ = [
-        ("ptr_data", c_void_p * 2),
-        ("begin_int_data", c_uint),
-        ("end_int_data", c_uint)]
+    def from_param(self):
+        """ctypes helper to convert instance to library parameter."""
+        return self._struct
 
-    # FIXME: Eliminate this and make normal constructor? Requires hiding ctypes
-    # object.
     @staticmethod
-    def from_locations(start, end):
-        return lib.clang_getRange(start, end)
+    def from_struct(res, func, arguments):
+        """ctypes helper to convert a CXSourceLocation into a SourceLocation."""
+        assert isinstance(res, SourceLocation.CXSourceLocation)
+
+        tu = None
+
+        for arg in arguments:
+            if isinstance(arg, TranslationUnit):
+                tu = arg
+                break
+
+            if hasattr(arg, 'translation_unit'):
+                tu = arg.translation_unit
+                break
+
+        if tu is None:
+            raise Exception('TranslationUnit not found when creating ' +
+                             'SourceLocation.')
+
+        return SourceLocation(structure=res, tu=tu)
+
+    @staticmethod
+    def from_position(tu, file, line, column):
+        """DEPRECATED Obtain a SourceLocation associated with a given
+        file/line/column in a translation unit.
+
+        Use __init__(file, line, column) or __init__(tu, filename, line,
+        column) instead.
+        """
+        warnings.warn('Switch to SourceLocation() constructor.',
+                DeprecationWarning)
+        return SourceLocation(tu=tu, source=file, line=line, column=column)
+
+    @staticmethod
+    def from_offset(tu, file, offset):
+        """DEPRECATED Retrieve a SourceLocation from a given character offset.
+
+        tu -- TranslationUnit file belongs to
+        file -- File instance to obtain offset from
+        offset -- Integer character offset within file
+        """
+        warnings.warn('Switch to SourceLocation() constructor.',
+                DeprecationWarning)
+        return SourceLocation(tu=tu, source=file, offset=offset)
+
+class SourceRange(object):
+    """Describe a range over two source locations within source code.
+
+    This is effectively a container for 2 SourceLocation instances.
+    """
+    class CXSourceRange(Structure):
+        """Wrapper for CXSourceRange structure.
+
+        This is an internal class and should not be used outside the module.
+        """
+        _fields_ = [
+            ('ptr_data', c_void_p * 2),
+            ('begin_int_data', c_uint),
+            ('end_int_data', c_uint)
+        ]
+
+    __slots__ = (
+        '_struct',
+    )
+
+    def __init__(self, start=None, end=None, structure=None, tu=None):
+        """Construct a SourceRange instance.
+
+        Instances can be constructed by passing a stand and end SourceLocation
+        or by passing a CXSourceRange structure.
+
+        If passing a CXSourceRange structure, tu must also be defined.
+        Otherwise, it is obtained from the start argument.
+
+        It is an error to pass SourceLocations referring to separate
+        TranslationUnits.
+
+        If both the start/end arguments and structure are defined, behavior is
+        undefined.
+
+        Arguments:
+
+        start -- SourceLocation representing the start of the range.
+        end -- SourceLocation representing the end of the range.
+        structure -- SourceRange.CXSourceRange instance.
+        tu -- TranslationUnit this range belongs to.
+        """
+        if start is not None:
+            assert isinstance(start, SourceLocation)
+
+        if end is not None:
+            assert isinstance(end, SourceLocation)
+
+        if structure is not None:
+            assert isinstance(structure, SourceRange.CXSourceRange)
+
+        if tu is not None:
+            assert isinstance(tu, TranslationUnit)
+
+        self._struct = structure
+
+        if structure is not None:
+            if tu is None:
+                raise ValueError('tu must be defined when constructing from ' +
+                                 'struct.')
+            self._struct.translation_unit = tu
+            return
+
+        assert isinstance(start.translation_unit, TranslationUnit)
+        assert start.translation_unit == end.translation_unit
+        self._struct = lib.clang_getRange(start.from_param(), end.from_param())
+        self._struct.translation_unit = start.translation_unit
 
     @property
     def start(self):
+        """Return a SourceLocation representing the first character within this
+        range.
         """
-        Return a SourceLocation representing the first character within a
-        source range.
-        """
-        return lib.clang_getRangeStart(self)
+        return lib.clang_getRangeStart(self._struct)
 
     @property
     def end(self):
+        """Return a SourceLocation representing the last character within this
+        range.
         """
-        Return a SourceLocation representing the last character within a
-        source range.
-        """
-        return lib.clang_getRangeEnd(self)
+        return lib.clang_getRangeEnd(self._struct)
 
     def __eq__(self, other):
-        return lib.clang_equalRanges(self, other)
+        return lib.clang_equalRanges(self._struct, other._struct)
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def __repr__(self):
         return "<SourceRange start %r, end %r>" % (self.start, self.end)
+
+    def from_param(self):
+        """ctypes helper to convert instance to libclang parameter."""
+        return self._struct
+
+    @staticmethod
+    def from_struct(res, func, arguments):
+        """ctypes helper to convert a CXSourceRange into a SourceRange."""
+        assert isinstance(res, SourceRange.CXSourceRange)
+
+        tu = None
+        for arg in arguments:
+            if isinstance(arg, TranslationUnit):
+                tu = arg
+                break
+
+            if hasattr(arg, 'translation_unit'):
+                tu = arg.translation_unit
+                break
+
+        if tu is None:
+            raise Exception('TranslationUnit not found when creating ' +
+                            'SourceRange.')
+
+        return SourceRange(structure=res, tu=tu)
+
+    @staticmethod
+    def from_locations(start, end):
+        """DEPRECATED Create a SourceRange from 2 SourceLocations.
+
+        The SourceRange() constructor should be used instead.
+        """
+        warnings.warn('Switch to SourceRange() constructor.',
+                DeprecationWarning)
+        return SourceRange(start=start, end=end)
+
 
 class Diagnostic(object):
     """
@@ -352,8 +656,16 @@ class Diagnostic(object):
     Error   = 3
     Fatal   = 4
 
-    def __init__(self, ptr):
-        self.ptr = ptr
+    __slots__ = (
+        '_ptr',
+        '_tu',
+    )
+
+    def __init__(self, ptr, tu=None):
+        assert isinstance(tu, TranslationUnit)
+
+        self._ptr = ptr
+        self._tu = tu
 
     def __del__(self):
         lib.clang_disposeDiagnostic(self)
@@ -396,13 +708,14 @@ class Diagnostic(object):
                 return int(lib.clang_getDiagnosticNumFixIts(self.diag))
 
             def __getitem__(self, key):
-                range = SourceRange()
+                fix_range = SourceRange.CXSourceRange()
                 value = lib.clang_getDiagnosticFixIt(self.diag, key,
-                        byref(range))
+                        byref(fix_range))
                 if len(value) == 0:
                     raise IndexError
 
-                return FixIt(range, value)
+                new_range = SourceRange(structure=fix_range, tu=self.diag._tu)
+                return FixIt(new_range, value)
 
         return FixItIterator(self)
 
@@ -429,12 +742,18 @@ class Diagnostic(object):
 
         return lib.clang_getCString(disable)
 
+    @property
+    def translation_unit(self):
+        """The TranslationUnit from which the Diagnostic was derived."""
+        return self._tu
+
     def __repr__(self):
         return "<Diagnostic severity %r, location %r, spelling %r>" % (
             self.severity, self.location, self.spelling)
 
     def from_param(self):
-        return self.ptr
+        """ctypes helper to convert instance to argument."""
+        return self._ptr
 
 class FixIt(object):
     """
@@ -1088,12 +1407,11 @@ class Cursor(object):
         '_result_type',
         '_spelling',
         '_struct',
-        '_tu',
         '_type',
         '_underlying_type',
     )
 
-    def __init__(self, structure=None, tu=None):
+    def __init__(self, location=None, structure=None, tu=None):
         """Instantiate a cursor instance.
 
         Currently, we only support creating cursors from CXCursor instances.
@@ -1102,14 +1420,14 @@ class Cursor(object):
         Cursor.
         """
 
+        if location is not None:
+            assert isinstance(location, SourceLocation)
+
         if structure is not None:
             assert isinstance(structure, Cursor.CXCursor)
 
         if tu is not None:
             assert isinstance(tu, TranslationUnit)
-
-        self._struct = structure
-        self._tu = tu
 
         self._access_specifier = None
         self._canonical = None
@@ -1126,9 +1444,14 @@ class Cursor(object):
         self._type = None
         self._underlying_type = None
 
-    @staticmethod
-    def from_location(tu, location):
-        return lib.clang_getCursor(tu, location)
+        if location is not None:
+            tu = location.translation_unit
+            self._struct = lib.clang_getCursor(tu, location.from_param())
+            self._struct.translation_unit = tu
+            return
+
+        self._struct = structure
+        self._struct.translation_unit = tu
 
     def __eq__(self, other):
         return lib.clang_equalCursors(self._struct, other._struct)
@@ -1451,9 +1774,7 @@ class Cursor(object):
     @property
     def translation_unit(self):
         """Returns the TranslationUnit to which this Cursor belongs."""
-        # If this triggers an AttributeError, the instance was not properly
-        # created.
-        return self._tu
+        return self._struct.translation_unit
 
     @property
     def ib_outlet_collection_type(self):
@@ -1468,6 +1789,11 @@ class Cursor(object):
 
         return lib.clang_getIncludedFile(self._struct)
 
+    @property
+    def translation_unit(self):
+        """Returns the TranslationUnit to which this Cursor belongs."""
+        return self._struct.translation_unit
+
     def get_children(self):
         """Return an iterator for accessing the children of this cursor."""
 
@@ -1475,7 +1801,7 @@ class Cursor(object):
         # TODO Implement as true iterator without buffering.
         # FIXME: Expose iteration from CIndex, PR6125.
         def visitor(child, parent, children):
-            cursor = Cursor(child, self._tu)
+            cursor = Cursor(structure=child, tu=self._struct.translation_unit)
 
             # FIXME: Document this assertion in API.
             assert not cursor.is_null()
@@ -1546,7 +1872,7 @@ class Cursor(object):
         # Store a reference to the TU in the Python object so it won't get GC'd
         # before the Cursor.
         tu = None
-        for arg in args:
+        for arg in arguments:
             if isinstance(arg, TranslationUnit):
                 tu = arg
                 break
@@ -1557,7 +1883,16 @@ class Cursor(object):
 
         assert tu is not None
 
-        return Cursor(res, tu)
+        return Cursor(structure=res, tu=tu)
+
+    @staticmethod
+    def from_location(tu, location):
+        """DEPRECATED Construct a Cursor from a SourceLocation.
+
+        Use the Cursor() constructor instead.
+        """
+        warnings.warn('Switch to Cursor() constructor.', DeprecationWarning)
+        return Cursor(location=location, tu=tu)
 
 ### Type Kinds ###
 
@@ -1652,16 +1987,34 @@ TypeKind.FUNCTIONPROTO = TypeKind(111)
 TypeKind.CONSTANTARRAY = TypeKind(112)
 TypeKind.VECTOR = TypeKind(113)
 
-class Type(Structure):
-    """
-    The type of an element in the abstract syntax tree.
-    """
-    _fields_ = [("_kind_id", c_int), ("data", c_void_p * 2)]
+class Type(object):
+    """The type of an element in the abstract syntax tree."""
+    class CXType(Structure):
+        """Wrapper for CXType structs.
+
+        This is an internal class and should not be used outside of the module.
+        """
+
+        _fields_ = [
+            ('kind_id', c_int),
+            ('data', c_void_p * 2)
+        ]
+
+    __slots__ = (
+        '_struct',
+    )
+
+    def __init__(self, structure=None, tu=None):
+        assert isinstance(structure, Type.CXType)
+        assert isinstance(tu, TranslationUnit)
+
+        self._struct = structure
+        self._struct.translation_unit = tu
 
     @property
     def kind(self):
         """Return the kind of this type."""
-        return TypeKind.from_id(self._kind_id)
+        return TypeKind.from_id(self._struct.kind_id)
 
     def argument_types(self):
         """Retrieve a container for the non-variadic arguments for this type.
@@ -1699,7 +2052,7 @@ class Type(Structure):
                 return result
 
         assert self.kind == TypeKind.FUNCTIONPROTO
-        return ArgumentsIterator(self)
+        return ArgumentsIterator(self._struct)
 
     @property
     def element_type(self):
@@ -1708,7 +2061,7 @@ class Type(Structure):
         If accessed on a type that is not an array, complex, or vector type, an
         exception will be raised.
         """
-        result = lib.clang_getElementType(self)
+        result = lib.clang_getElementType(self._struct)
         if result.kind == TypeKind.INVALID:
             raise Exception('Element type not available on this type.')
 
@@ -1722,45 +2075,21 @@ class Type(Structure):
 
         If the Type is not an array or vector, this raises.
         """
-        result = lib.clang_getNumElements(self)
+        result = lib.clang_getNumElements(self._struct)
         if result < 0:
             raise Exception('Type does not have elements.')
 
         return result
 
-    @property
-    def translation_unit(self):
-        """The TranslationUnit to which this Type is associated."""
-        # If this triggers an AttributeError, the instance was not properly
-        # instantiated.
-        return self._tu
-
-    @staticmethod
-    def from_result(res, func, args):
-        assert isinstance(res, Type)
-
-        tu = None
-        for arg in args:
-            if hasattr(arg, 'translation_unit'):
-                tu = arg.translation_unit
-                break
-
-        assert tu is not None
-        res._tu = tu
-
-        return res
-
     def get_canonical(self):
-        """
-        Return the canonical type for a Type.
+        """Return the canonical type for a Type.
 
-        Clang's type system explicitly models typedefs and all the
-        ways a specific type can be represented.  The canonical type
-        is the underlying type with all the "sugar" removed.  For
-        example, if 'T' is a typedef for 'int', the canonical type for
-        'T' would be 'int'.
+        Clang's type system explicitly models typedefs and all the ways a
+        specific type can be represented.  The canonical type is the underlying
+        type with all the "sugar" removed.  For example, if 'T' is a typedef
+        for 'int', the canonical type for 'T' would be 'int'.
         """
-        return lib.clang_getCanonicalType(self)
+        return lib.clang_getCanonicalType(self._struct)
 
     def is_const_qualified(self):
         """Determine whether a Type has the "const" qualifier set.
@@ -1768,7 +2097,7 @@ class Type(Structure):
         This does not look through typedefs that may have added "const"
         at a different level.
         """
-        return lib.clang_isConstQualifiedType(self)
+        return lib.clang_isConstQualifiedType(self._struct)
 
     def is_volatile_qualified(self):
         """Determine whether a Type has the "volatile" qualifier set.
@@ -1776,7 +2105,7 @@ class Type(Structure):
         This does not look through typedefs that may have added "volatile"
         at a different level.
         """
-        return lib.clang_isVolatileQualifiedType(self)
+        return lib.clang_isVolatileQualifiedType(self._struct)
 
     def is_restrict_qualified(self):
         """Determine whether a Type has the "restrict" qualifier set.
@@ -1784,56 +2113,80 @@ class Type(Structure):
         This does not look through typedefs that may have added "restrict" at
         a different level.
         """
-        return lib.clang_isRestrictQualifiedType(self)
+        return lib.clang_isRestrictQualifiedType(self._struct)
 
     def is_function_variadic(self):
         """Determine whether this function Type is a variadic function type."""
         assert self.kind == TypeKind.FUNCTIONPROTO
 
-        return lib.clang_isFunctionTypeVariadic(self)
+        return lib.clang_isFunctionTypeVariadic(self._struct)
 
     def is_pod(self):
         """Determine whether this Type represents plain old data (POD)."""
-        return lib.clang_isPODType(self)
+        return lib.clang_isPODType(self._struct)
 
     def get_pointee(self):
         """
         For pointer types, returns the type of the pointee.
         """
-        return lib.clang_getPointeeType(self)
+        return lib.clang_getPointeeType(self._struct)
 
     def get_declaration(self):
         """
         Return the cursor for the declaration of the given type.
         """
-        return lib.clang_getTypeDeclaration(self)
+        return lib.clang_getTypeDeclaration(self._struct)
 
     def get_result(self):
         """
         Retrieve the result type associated with a function type.
         """
-        return lib.clang_getResultType(self)
+        return lib.clang_getResultType(self._struct)
 
     def get_array_element_type(self):
         """
         Retrieve the type of the elements of the array type.
         """
-        return lib.clang_getArrayElementType(self)
+        return lib.clang_getArrayElementType(self._struct)
 
     def get_array_size(self):
         """
         Retrieve the size of the constant array.
         """
-        return lib.clang_getArraySize(self)
+        return lib.clang_getArraySize(self._struct)
+
+    @property
+    def translation_unit(self):
+        """Get the TranslationUnit from which this instance was derived."""
+        return self._struct.translation_unit
 
     def __eq__(self, other):
         if type(other) != type(self):
             return False
 
-        return lib.clang_equalTypes(self, other)
+        return lib.clang_equalTypes(self._struct, other._struct)
 
     def __ne__(self, other):
         return not self.__eq__(other)
+
+    @staticmethod
+    def from_struct(res, func, args):
+        assert isinstance(res, Type.CXType)
+
+        tu = None
+        for arg in args:
+            if isinstance(arg, TranslationUnit):
+                tu = arg
+                break
+
+            if hasattr(arg, 'translation_unit'):
+                tu = arg.translation_unit
+                break
+
+        if tu is None:
+            raise Exception('TranslationUnit not found when creating Type.')
+
+        return Type(structure=res, tu=tu)
 
 class TokenKind(object):
     """Describes the kind of token."""
@@ -1880,21 +2233,20 @@ TokenKind.IDENTIFIER = TokenKind(2)
 TokenKind.LITERAL = TokenKind(3)
 TokenKind.COMMENT = TokenKind(4)
 
-class Token(Structure):
+class Token(object):
     """Represents a token from a source file.
 
     A token is an entity extracted by the parser. These include things like
     keywords, identifiers, comments, etc.
 
     Token instances can be obtained by calling TranslationUnit.get_tokens().
-    The API does not support direct creation of tokens. While it is possible,
-    you shouldn't do it.
+    The API does not currently support direct creation of tokens.
     """
 
     class CXToken(Structure):
         """Represents a CXToken structure.
 
-        This is an internal class and shouldn't be used externally.
+        This is an internal class and shouldn't be used outside of the module.
         """
 
         _fields_ = [
@@ -1909,18 +2261,16 @@ class Token(Structure):
         '_location',
         '_spelling',
         '_struct',
-        '_tu',
     )
 
     def __init__(self, structure=None, tu=None):
-        if structure is not None:
-            assert isinstance(structure, Token.CXToken)
+        assert isinstance(structure, Token.CXToken)
 
         if tu is not None:
             assert isinstance(tu, TranslationUnit)
 
         self._struct = structure
-        self._tu = tu
+        self._struct.translation_unit = tu
 
         self._cursor = None
         self._extent = None
@@ -1943,7 +2293,8 @@ class Token(Structure):
         This is the literal text defining the token.
         """
         if self._spelling is None:
-            self._spelling = lib.clang_getTokenSpelling(self._tu, self._struct)
+            self._spelling = lib.clang_getTokenSpelling(
+                    self._struct.translation_unit, self._struct)
 
         return self._spelling
 
@@ -1954,7 +2305,8 @@ class Token(Structure):
         Returns a SourceLocation instance.
         """
         if self._location is None:
-            self._location = lib.clang_getTokenLocation(self._tu, self._struct)
+            self._location = lib.clang_getTokenLocation(
+                    self._struct.translation_unit, self._struct)
 
         return self._location
 
@@ -1965,7 +2317,8 @@ class Token(Structure):
         Returns a SourceRange instance.
         """
         if self._extent is None:
-            self._extent = lib.clang_getTokenExtent(self._tu, self._struct)
+            self._extent = lib.clang_getTokenExtent(
+                    self._struct.translation_unit, self._struct)
 
         return self._extent
 
@@ -1974,10 +2327,11 @@ class Token(Structure):
         """Retrieve the Cursor this Token corresponds to."""
         if self._cursor is None:
             cursor = Cursor.CXCursor()
-            lib.clang_annotateTokens(self._tu, byref(self._struct), 1,
-                                     byref(cursor))
+            lib.clang_annotateTokens(self._struct.translation_unit,
+                                     byref(self._struct), 1, byref(cursor))
 
-            self._cursor = Cursor(cursor, self._tu)
+            self._cursor = Cursor(structure=cursor,
+                                  tu=self._struct.translation_unit)
 
         return self._cursor
 
@@ -2449,7 +2803,7 @@ class TranslationUnit(ClangObject):
         """
         def visitor(fobj, lptr, depth, includes):
             if depth > 0:
-                loc = lptr.contents
+                loc = SourceLocation(structure=lptr.contents, tu=self)
                 includes.append(FileInclusion(loc.file, File(fobj), loc, depth))
 
         # Automatically adapt CIndex/ctype pointers to python objects
@@ -2475,7 +2829,7 @@ class TranslationUnit(ClangObject):
                 diag = lib.clang_getDiagnostic(self.tu, key)
                 if not diag:
                     raise IndexError
-                return Diagnostic(diag)
+                return Diagnostic(diag, tu=self.tu)
 
         return DiagIterator(self)
 
@@ -2581,9 +2935,7 @@ class TranslationUnit(ClangObject):
             assert(isinstance(sourcerange, SourceRange))
             use_range = sourcerange
         elif start_location is not None and end_location is not None:
-            assert(isinstance(start_location, SourceLocation))
-            assert(isinstance(end_location, SourceLocation))
-            use_range = SourceRange.from_locations(start_location, end_location)
+            use_range = SourceRange(start=start_location, end=end_location)
         else:
             raise Exception('Must supply sourcerange or locations.')
 
@@ -2596,7 +2948,8 @@ class TranslationUnit(ClangObject):
         # having to create an original Token instance.
         memory = POINTER(Token.CXToken)()
         number = c_uint()
-        lib.clang_tokenize(self, use_range, byref(memory), byref(number))
+        lib.clang_tokenize(self, use_range.from_param(), byref(memory),
+                           byref(number))
 
         count = int(number.value)
         tokens_p = cast(memory, POINTER(Token.CXToken * count)).contents
@@ -2668,6 +3021,11 @@ class File(ClangObject):
         """Return whether this file is guarded against multiple inclusions."""
         return lib.clang_isFileMultipleIncludeGuarded(self._tu, self)
 
+    @property
+    def translation_unit(self):
+        """Return the TranslationUnit to which this File belongs."""
+        return self._tu
+
     def __str__(self):
         return self.name
 
@@ -2698,7 +3056,7 @@ class FileInclusion(object):
 
 # Register callback types in common container.
 callbacks['translation_unit_includes'] = CFUNCTYPE(None, c_object_p,
-        POINTER(SourceLocation), c_uint, py_object)
+        POINTER(SourceLocation.CXSourceLocation), c_uint, py_object)
 callbacks['cursor_visit'] = CFUNCTYPE(c_int, Cursor.CXCursor, Cursor.CXCursor,
                                       py_object)
 
@@ -2759,33 +3117,35 @@ def register_functions(lib):
     lib.clang_equalCursors.argtypes = [Cursor.CXCursor, Cursor.CXCursor]
     lib.clang_equalCursors.restype = bool
 
-    lib.clang_equalLocations.argtypes = [SourceLocation, SourceLocation]
+    lib.clang_equalLocations.argtypes = [SourceLocation.CXSourceLocation,
+                                         SourceLocation.CXSourceLocation]
     lib.clang_equalLocations.restype = bool
 
-    lib.clang_equalRanges.argtypes = [SourceRange, SourceRange]
+    lib.clang_equalRanges.argtypes = [SourceRange.CXSourceRange,
+                                      SourceRange.CXSourceRange]
     lib.clang_equalRanges.restype = bool
 
-    lib.clang_equalTypes.argtypes = [Type, Type]
+    lib.clang_equalTypes.argtypes = [Type.CXType, Type.CXType]
     lib.clang_equalTypes.restype = bool
 
-    lib.clang_getArgType.argtypes = [Type, c_uint]
-    lib.clang_getArgType.restype = Type
-    lib.clang_getArgType.errcheck = Type.from_result
+    lib.clang_getArgType.argtypes = [Type.CXType, c_uint]
+    lib.clang_getArgType.restype = Type.CXType
+    lib.clang_getArgType.errcheck = Type.from_struct
 
-    lib.clang_getArrayElementType.argtypes = [Type]
-    lib.clang_getArrayElementType.restype = Type
-    lib.clang_getArrayElementType.errcheck = Type.from_result
+    lib.clang_getArrayElementType.argtypes = [Type.CXType]
+    lib.clang_getArrayElementType.restype = Type.CXType
+    lib.clang_getArrayElementType.errcheck = Type.from_struct
 
-    lib.clang_getArraySize.argtypes = [Type]
+    lib.clang_getArraySize.argtypes = [Type.CXType]
     lib.clang_getArraySize.restype = c_longlong
 
     lib.clang_getCanonicalCursor.argtypes = [Cursor.CXCursor]
     lib.clang_getCanonicalCursor.restype = Cursor.CXCursor
     lib.clang_getCanonicalCursor.errcheck = Cursor.from_struct
 
-    lib.clang_getCanonicalType.argtypes = [Type]
-    lib.clang_getCanonicalType.restype = Type
-    lib.clang_getCanonicalType.errcheck = Type.from_result
+    lib.clang_getCanonicalType.argtypes = [Type.CXType]
+    lib.clang_getCanonicalType.restype = Type.CXType
+    lib.clang_getCanonicalType.errcheck = Type.from_struct
 
     lib.clang_getCompletionAvailability.argtypes = [c_void_p]
     lib.clang_getCompletionAvailability.restype = c_int
@@ -2805,9 +3165,11 @@ def register_functions(lib):
     lib.clang_getCString.argtypes = [_CXString]
     lib.clang_getCString.restype = c_char_p
 
-    lib.clang_getCursor.argtypes = [TranslationUnit, SourceLocation]
+    lib.clang_getCursor.argtypes = [TranslationUnit,
+                                    SourceLocation.CXSourceLocation]
     lib.clang_getCursor.restype = Cursor.CXCursor
-    lib.clang_getCursor.errcheck = Cursor.from_struct
+    # errcheck not defined because this is called directly from Cursor()
+    # constructor.
 
     lib.clang_getCursorDefinition.argtypes = [Cursor.CXCursor]
     lib.clang_getCursorDefinition.restype = Cursor.CXCursor
@@ -2818,14 +3180,16 @@ def register_functions(lib):
     lib.clang_getCursorDisplayName.errcheck = _CXString.from_result
 
     lib.clang_getCursorExtent.argtypes = [Cursor.CXCursor]
-    lib.clang_getCursorExtent.restype = SourceRange
+    lib.clang_getCursorExtent.restype = SourceRange.CXSourceRange
+    lib.clang_getCursorExtent.errcheck = SourceRange.from_struct
 
     lib.clang_getCursorLexicalParent.argtypes = [Cursor.CXCursor]
     lib.clang_getCursorLexicalParent.restype = Cursor.CXCursor
     lib.clang_getCursorLexicalParent.errcheck = Cursor.from_struct
 
     lib.clang_getCursorLocation.argtypes = [Cursor.CXCursor]
-    lib.clang_getCursorLocation.restype = SourceLocation
+    lib.clang_getCursorLocation.restype = SourceLocation.CXSourceLocation
+    lib.clang_getCursorLocation.errcheck = SourceLocation.from_struct
 
     lib.clang_getCursorReferenced.argtypes = [Cursor.CXCursor]
     lib.clang_getCursorReferenced.restype = Cursor.CXCursor
@@ -2833,7 +3197,8 @@ def register_functions(lib):
 
     lib.clang_getCursorReferenceNameRange.argtypes = [Cursor.CXCursor, c_uint,
                                                      c_uint]
-    lib.clang_getCursorReferenceNameRange.restype = SourceRange
+    lib.clang_getCursorReferenceNameRange.restype = SourceRange.CXSourceRange
+    lib.clang_getCursorReferenceNameRange.errcheck = SourceRange.from_struct
 
     lib.clang_getCursorSemanticParent.argtypes = [Cursor.CXCursor]
     lib.clang_getCursorSemanticParent.restype = Cursor.CXCursor
@@ -2844,8 +3209,8 @@ def register_functions(lib):
     lib.clang_getCursorSpelling.errcheck = _CXString.from_result
 
     lib.clang_getCursorType.argtypes = [Cursor.CXCursor]
-    lib.clang_getCursorType.restype = Type
-    lib.clang_getCursorType.errcheck = Type.from_result
+    lib.clang_getCursorType.restype = Type.CXType
+    lib.clang_getCursorType.errcheck = Type.from_struct
 
     lib.clang_getCursorUSR.argtypes = [Cursor.CXCursor]
     lib.clang_getCursorUSR.restype = _CXString
@@ -2872,12 +3237,13 @@ def register_functions(lib):
     lib.clang_getDiagnosticCategoryName.errcheck = _CXString.from_result
 
     lib.clang_getDiagnosticFixIt.argtypes = [Diagnostic, c_uint,
-            POINTER(SourceRange)]
+            POINTER(SourceRange.CXSourceRange)]
     lib.clang_getDiagnosticFixIt.restype = _CXString
     lib.clang_getDiagnosticFixIt.errcheck = _CXString.from_result
 
     lib.clang_getDiagnosticLocation.argtypes = [Diagnostic]
-    lib.clang_getDiagnosticLocation.restype = SourceLocation
+    lib.clang_getDiagnosticLocation.restype = SourceLocation.CXSourceLocation
+    lib.clang_getDiagnosticLocation.errcheck = SourceLocation.from_struct
 
     lib.clang_getDiagnosticNumFixIts.argtypes = [Diagnostic]
     lib.clang_getDiagnosticNumFixIts.restype = c_uint
@@ -2890,7 +3256,8 @@ def register_functions(lib):
     lib.clang_getDiagnosticOption.errcheck = _CXString.from_result
 
     lib.clang_getDiagnosticRange.argtypes = [Diagnostic, c_uint]
-    lib.clang_getDiagnosticRange.restype = SourceRange
+    lib.clang_getDiagnosticRange.restype = SourceRange.CXSourceRange
+    lib.clang_getDiagnosticRange.errcheck = SourceRange.from_struct
 
     lib.clang_getDiagnosticSeverity.argtypes = [Diagnostic]
     lib.clang_getDiagnosticSeverity.restype = c_int
@@ -2899,13 +3266,18 @@ def register_functions(lib):
     lib.clang_getDiagnosticSpelling.restype = _CXString
     lib.clang_getDiagnosticSpelling.errcheck = _CXString.from_result
 
-    lib.clang_getElementType.argtypes = [Type]
-    lib.clang_getElementType.restype = Type
-    lib.clang_getElementType.errcheck = Type.from_result
+    lib.clang_getElementType.argtypes = [Type.CXType]
+    lib.clang_getElementType.restype = Type.CXType
+    lib.clang_getElementType.errcheck = Type.from_struct
 
     lib.clang_getEnumDeclIntegerType.argtypes = [Cursor.CXCursor]
-    lib.clang_getEnumDeclIntegerType.restype = Type
-    lib.clang_getEnumDeclIntegerType.errcheck = Type.from_result
+    lib.clang_getEnumDeclIntegerType.restype = Type.CXType
+    lib.clang_getEnumDeclIntegerType.errcheck = Type.from_struct
+
+    lib.clang_getExpansionLocation.argtypes = [SourceLocation.CXSourceLocation,
+            POINTER(c_object_p), POINTER(c_uint), POINTER(c_uint),
+            POINTER(c_uint)]
+    lib.clang_getExpansionLocation.restype = None
 
     lib.clang_getFile.argtypes = [TranslationUnit, c_char_p]
     lib.clang_getFile.restype = c_object_p
@@ -2918,8 +3290,8 @@ def register_functions(lib):
     lib.clang_getFileTime.restype = c_uint
 
     lib.clang_getIBOutletCollectionType.argtypes = [Cursor.CXCursor]
-    lib.clang_getIBOutletCollectionType.restype = Type
-    lib.clang_getIBOutletCollectionType.errcheck = Type.from_result
+    lib.clang_getIBOutletCollectionType.restype = Type.CXType
+    lib.clang_getIBOutletCollectionType.errcheck = Type.from_struct
 
     lib.clang_getIncludedFile.argtypes = [Cursor.CXCursor]
     lib.clang_getIncludedFile.restype = File
@@ -2928,19 +3300,19 @@ def register_functions(lib):
     lib.clang_getInclusions.argtypes = [TranslationUnit,
             callbacks['translation_unit_includes'], py_object]
 
-    lib.clang_getInstantiationLocation.argtypes = [SourceLocation,
-            POINTER(c_object_p), POINTER(c_uint), POINTER(c_uint),
-            POINTER(c_uint)]
-
     lib.clang_getLocation.argtypes = [TranslationUnit, File, c_uint, c_uint]
-    lib.clang_getLocation.restype = SourceLocation
+    lib.clang_getLocation.restype = SourceLocation.CXSourceLocation
+    # errcheck omitted because this is called only by SourceLocation's
+    # constructor.
 
     lib.clang_getLocationForOffset.argtypes = [TranslationUnit, File, c_uint]
-    lib.clang_getLocationForOffset.restype = SourceLocation
+    lib.clang_getLocationForOffset.restype = SourceLocation.CXSourceLocation
+    # errcheck omitted because this is called only by SourceLocation's
+    # constructor.
 
     lib.clang_getNullCursor.restype = Cursor.CXCursor
 
-    lib.clang_getNumArgTypes.argtypes = [Type]
+    lib.clang_getNumArgTypes.argtypes = [Type.CXType]
     lib.clang_getNumArgTypes.restype = c_uint
 
     lib.clang_getNumCompletionChunks.argtypes = [c_void_p]
@@ -2949,7 +3321,7 @@ def register_functions(lib):
     lib.clang_getNumDiagnostics.argtypes = [c_object_p]
     lib.clang_getNumDiagnostics.restype = c_uint
 
-    lib.clang_getNumElements.argtypes = [Type]
+    lib.clang_getNumElements.argtypes = [Type.CXType]
     lib.clang_getNumElements.restype = c_longlong
 
     lib.clang_getNumOverloadedDecls.argtypes = [Cursor.CXCursor]
@@ -2959,22 +3331,26 @@ def register_functions(lib):
     lib.clang_getOverloadedDecl.restype = Cursor.CXCursor
     lib.clang_getOverloadedDecl.errcheck = Cursor.from_struct
 
-    lib.clang_getPointeeType.argtypes = [Type]
-    lib.clang_getPointeeType.restype = Type
-    lib.clang_getPointeeType.errcheck = Type.from_result
+    lib.clang_getPointeeType.argtypes = [Type.CXType]
+    lib.clang_getPointeeType.restype = Type.CXType
+    lib.clang_getPointeeType.errcheck = Type.from_struct
 
-    lib.clang_getRange.argtypes = [SourceLocation, SourceLocation]
-    lib.clang_getRange.restype = SourceRange
+    lib.clang_getRange.argtypes = [SourceLocation.CXSourceLocation,
+                                   SourceLocation.CXSourceLocation]
+    lib.clang_getRange.restype = SourceRange.CXSourceRange
+    # errcheck omitted because called from SourceRange constructor.
 
-    lib.clang_getRangeEnd.argtypes = [SourceRange]
-    lib.clang_getRangeEnd.restype = SourceLocation
+    lib.clang_getRangeEnd.argtypes = [SourceRange.CXSourceRange]
+    lib.clang_getRangeEnd.restype = SourceLocation.CXSourceLocation
+    lib.clang_getRangeEnd.errcheck = SourceLocation.from_struct
 
-    lib.clang_getRangeStart.argtypes = [SourceRange]
-    lib.clang_getRangeStart.restype = SourceLocation
+    lib.clang_getRangeStart.argtypes = [SourceRange.CXSourceRange]
+    lib.clang_getRangeStart.restype = SourceLocation.CXSourceLocation
+    lib.clang_getRangeStart.errcheck = SourceLocation.from_struct
 
-    lib.clang_getResultType.argtypes = [Type]
-    lib.clang_getResultType.restype = Type
-    lib.clang_getResultType.errcheck = Type.from_result
+    lib.clang_getResultType.argtypes = [Type.CXType]
+    lib.clang_getResultType.restype = Type.CXType
+    lib.clang_getResultType.errcheck = Type.from_struct
 
     lib.clang_getSpecializedCursorTemplate.argtypes = [Cursor.CXCursor]
     lib.clang_getSpecializedCursorTemplate.restype = Cursor.CXCursor
@@ -2984,14 +3360,16 @@ def register_functions(lib):
     lib.clang_getTemplateCursorKind.restype = c_uint
 
     lib.clang_getTokenExtent.argtypes = [TranslationUnit, Token.CXToken]
-    lib.clang_getTokenExtent.restype = SourceRange
+    lib.clang_getTokenExtent.restype = SourceRange.CXSourceRange
+    lib.clang_getTokenExtent.errcheck = SourceRange.from_struct
 
     lib.clang_getTokenKind.argtypes = [Token.CXToken]
     lib.clang_getTokenKind.restype = c_uint
     lib.clang_getTokenKind.errcheck = TokenKind.from_result
 
     lib.clang_getTokenLocation.argtype = [TranslationUnit, Token.CXToken]
-    lib.clang_getTokenLocation.restype = SourceLocation
+    lib.clang_getTokenLocation.restype = SourceLocation.CXSourceLocation
+    lib.clang_getTokenLocation.errcheck = SourceLocation.from_struct
 
     lib.clang_getTokenSpelling.argtype = [TranslationUnit, Token.CXToken]
     lib.clang_getTokenSpelling.restype = _CXString
@@ -3008,13 +3386,13 @@ def register_functions(lib):
     lib.clang_getTUResourceUsageName.argtypes = [c_uint]
     lib.clang_getTUResourceUsageName.restype = c_char_p
 
-    lib.clang_getTypeDeclaration.argtypes = [Type]
+    lib.clang_getTypeDeclaration.argtypes = [Type.CXType]
     lib.clang_getTypeDeclaration.restype = Cursor.CXCursor
     lib.clang_getTypeDeclaration.errcheck = Cursor.from_struct
 
     lib.clang_getTypedefDeclUnderlyingType.argtypes = [Cursor.CXCursor]
-    lib.clang_getTypedefDeclUnderlyingType.restype = Type
-    lib.clang_getTypedefDeclUnderlyingType.errcheck = Type.from_result
+    lib.clang_getTypedefDeclUnderlyingType.restype = Type.CXType
+    lib.clang_getTypedefDeclUnderlyingType.errcheck = Type.from_struct
 
     lib.clang_getTypeKindSpelling.argtypes = [c_uint]
     lib.clang_getTypeKindSpelling.restype = _CXString
@@ -3026,7 +3404,7 @@ def register_functions(lib):
     lib.clang_isAttribute.argtypes = [CursorKind]
     lib.clang_isAttribute.restype = bool
 
-    lib.clang_isConstQualifiedType.argtypes = [Type]
+    lib.clang_isConstQualifiedType.argtypes = [Type.CXType]
     lib.clang_isConstQualifiedType.restype = bool
 
     lib.clang_isCursorDefinition.argtypes = [Cursor.CXCursor]
@@ -3041,13 +3419,13 @@ def register_functions(lib):
     lib.clang_isFileMultipleIncludeGuarded.argtypes = [TranslationUnit, File]
     lib.clang_isFileMultipleIncludeGuarded.restype = bool
 
-    lib.clang_isFunctionTypeVariadic.argtypes = [Type]
+    lib.clang_isFunctionTypeVariadic.argtypes = [Type.CXType]
     lib.clang_isFunctionTypeVariadic.restype = bool
 
     lib.clang_isInvalid.argtypes = [CursorKind]
     lib.clang_isInvalid.restype = bool
 
-    lib.clang_isPODType.argtypes = [Type]
+    lib.clang_isPODType.argtypes = [Type.CXType]
     lib.clang_isPODType.restype = bool
 
     lib.clang_isPreprocessing.argtypes = [CursorKind]
@@ -3056,7 +3434,7 @@ def register_functions(lib):
     lib.clang_isReference.argtypes = [CursorKind]
     lib.clang_isReference.restype = bool
 
-    lib.clang_isRestrictQualifiedType.argtypes = [Type]
+    lib.clang_isRestrictQualifiedType.argtypes = [Type.CXType]
     lib.clang_isRestrictQualifiedType.restype = bool
 
     lib.clang_isStatement.argtypes = [CursorKind]
@@ -3071,7 +3449,7 @@ def register_functions(lib):
     lib.clang_isVirtualBase.argtypes = [Cursor.CXCursor]
     lib.clang_isVirtualBase.restype = bool
 
-    lib.clang_isVolatileQualifiedType.argtypes = [Type]
+    lib.clang_isVolatileQualifiedType.argtypes = [Type.CXType]
     lib.clang_isVolatileQualifiedType.restype = bool
 
     lib.clang_parseTranslationUnit.argypes = [Index, c_char_p, c_void_p, c_int,
@@ -3086,7 +3464,7 @@ def register_functions(lib):
             c_uint]
     lib.clang_saveTranslationUnit.restype = c_int
 
-    lib.clang_tokenize.argtypes = [TranslationUnit, SourceRange,
+    lib.clang_tokenize.argtypes = [TranslationUnit, SourceRange.CXSourceRange,
             POINTER(POINTER(Token.CXToken)), POINTER(c_uint)]
 
     lib.clang_visitChildren.argtypes = [Cursor.CXCursor, callbacks['cursor_visit'],
