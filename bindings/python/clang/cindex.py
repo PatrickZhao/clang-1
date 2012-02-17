@@ -400,7 +400,7 @@ class CXTUResourceUsage(Structure):
 
         return ret
 
-### Classes Defining Enumerations ###
+### Enumerations Classes ###
 
 class CXXAccessSpecifier(object):
     """Describes the C++ access level of a cursor.
@@ -1089,11 +1089,6 @@ class Diagnostic(object):
     Error   = 3
     Fatal   = 4
 
-    __slots__ = (
-        '_ptr',
-        '_tu',
-    )
-
     def __init__(self, ptr, tu=None):
         assert isinstance(tu, TranslationUnit)
 
@@ -1103,7 +1098,7 @@ class Diagnostic(object):
     def __del__(self):
         lib.clang_disposeDiagnostic(self)
 
-    @property
+    @CachedProperty
     def severity(self):
         """The severity of this diagnostic.
 
@@ -1112,12 +1107,12 @@ class Diagnostic(object):
         """
         return lib.clang_getDiagnosticSeverity(self)
 
-    @property
+    @CachedProperty
     def location(self):
         """The SourceLocation this diagnostic came from."""
         return lib.clang_getDiagnosticLocation(self)
 
-    @property
+    @CachedProperty
     def spelling(self):
         """The string representation of this diagnostic."""
         return lib.clang_getDiagnosticSpelling(self)
@@ -1144,7 +1139,7 @@ class Diagnostic(object):
     def fixits(self):
         """FixIt instances for this diagnostic.
 
-        This returns an iterator.
+        This returns an iterable and indexable object.
         """
 
         class FixItIterator:
@@ -1167,22 +1162,22 @@ class Diagnostic(object):
 
         return FixItIterator(self)
 
-    @property
+    @CachedProperty
     def category_number(self):
         """The category number for this diagnostic."""
         return lib.clang_getDiagnosticCategory(self)
 
-    @property
+    @CachedProperty
     def category_name(self):
         """The string name of the category for this diagnostic."""
         return lib.clang_getDiagnosticCategoryName(self.category_number)
 
-    @property
+    @CachedProperty
     def option(self):
         """The command-line option that enables this diagnostic."""
         return lib.clang_getDiagnosticOption(self, None)
 
-    @property
+    @CachedProperty
     def disable_option(self):
         """The command-line option that disables this diagnostic."""
         disable = CXString()
@@ -1329,12 +1324,12 @@ class Cursor(object):
         another translation unit."""
         return lib.clang_getCursorUSR(self._struct)
 
-    @property
+    @CachedProperty
     def kind(self):
         """Return the kind of this cursor."""
         return CursorKind.from_value(self._struct.kind)
 
-    @property
+    @CachedProperty
     def template_kind(self):
         """Return the CursorKind of the specializations that would be generated
         by instantiating the template.
@@ -1350,7 +1345,7 @@ class Cursor(object):
 
         return result
 
-    @property
+    @CachedProperty
     def template_specialization(self):
         """Retrieve the Cursor to the template this Cursor specializes or from
         which it was instantiated.
@@ -1523,33 +1518,32 @@ class Cursor(object):
         return lib.clang_hashCursor(self._struct)
 
     @property
+    def translation_unit(self):
+        """Returns the TranslationUnit to which this Cursor belongs."""
+        return self._struct.translation_unit
+
+    @CachedProperty
     def semantic_parent(self):
         """Return the semantic parent for this cursor."""
-        if not hasattr(self, '_semantic_parent'):
-            self._semantic_parent = Cursor_semantic_parent(self)
+        return lib.clang_getCursorSemanticParent(self._struct)
 
-        return self._semantic_parent
-
-    @property
+    @CachedProperty
     def lexical_parent(self):
         """Return the lexical parent for this cursor."""
-        if not hasattr(self, '_lexical_parent'):
-            self._lexical_parent = Cursor_lexical_parent(self)
-
-        return self._lexical_parent
+        return lib.clang_getCursorLexicalParent(self._struct)
 
     @property
     def translation_unit(self):
         """Returns the TranslationUnit to which this Cursor belongs."""
         return self._struct.translation_unit
 
-    @property
+    @CachedProperty
     def ib_outlet_collection_type(self):
         """Returns the collection element Type for an IB Outlet Collection
         attribute."""
         return lib.clang_getIBOutletCollectionType(self._struct)
 
-    @property
+    @CachedProperty
     def included_file(self):
         """Returns the File that is included by the current inclusion cursor."""
         assert self.kind == CursorKind.INCLUSION_DIRECTIVE
@@ -1686,10 +1680,6 @@ class Type(object):
             ('data', c_void_p * 2)
         ]
 
-    __slots__ = (
-        '_struct',
-    )
-
     def __init__(self, structure=None, tu=None):
         assert isinstance(structure, Type.CXType)
         assert isinstance(tu, TranslationUnit)
@@ -1697,7 +1687,7 @@ class Type(object):
         self._struct = structure
         self._struct.translation_unit = tu
 
-    @property
+    @CachedProperty
     def kind(self):
         """Return the kind of this type."""
         return TypeKind.from_value(self._struct.kind_id)
@@ -1740,7 +1730,7 @@ class Type(object):
         assert self.kind == TypeKind.FUNCTIONPROTO
         return ArgumentsIterator(self._struct)
 
-    @property
+    @CachedProperty
     def element_type(self):
         """Retrieve the Type of elements within this Type.
 
@@ -1753,7 +1743,7 @@ class Type(object):
 
         return result
 
-    @property
+    @CachedProperty
     def element_count(self):
         """Retrieve the number of elements in this type.
 
@@ -2075,12 +2065,12 @@ class CompletionString(ClangObject):
             raise IndexError
         return CompletionChunk(self.obj, key)
 
-    @property
+    @CachedProperty
     def priority(self):
         """The numeric priority of this completion."""
         return lib.clang_getCompletionPriority(self.obj)
 
-    @property
+    @CachedProperty
     def availability(self):
         """The CompletionString.Availability of this completion."""
         res = lib.clang_getCompletionAvailability(self.obj)
@@ -2098,12 +2088,12 @@ class CodeCompletionResult(Structure):
     def __repr__(self):
         return str(CompletionString(self.completionString))
 
-    @property
+    @CachedProperty
     def kind(self):
         """The CursorKind for this result."""
         return CursorKind.from_value(self.cursorKind)
 
-    @property
+    @CachedProperty
     def string(self):
         """The CompletionString for this result."""
         return CompletionString(self.completionString)
