@@ -39,9 +39,12 @@ def test_diagnostic_fixit():
     assert fixit.range.end.line == 1
     assert fixit.range.end.column == 30
     assert fixit.value == '.f0 = '
-    eq_(repr(fixit), "<FixIt range <SourceRange start <SourceLocation file "
-                     "'INPUT.c', line 1, column 26>, end <SourceLocation file "
-                     "'INPUT.c', line 1, column 30>>, value '.f0 = '>")
+    expected = \
+        "<FixIt range <SourceRange start <SourceLocation file " \
+        "'t.c', line 1, column 26>, end <SourceLocation file " \
+        "'t.c', line 1, column 30>>, value '.f0 = '>"
+
+    assert repr(fixit) == expected
 
 def test_diagnostic_range():
     tu = get_tu('void f() { int i = "a" + 1; }')
@@ -89,7 +92,10 @@ def test_repr():
     """Ensure repr(Diagnostic) formats properly."""
 
     tu = get_tu('''int f(int i) { return 7; }''', all_warnings=True)
-    r = repr(tu.diagnostics[0])
 
-    assert r == "<Diagnostic severity 2, location <SourceLocation file \'INPUT.c\'," \
-           " line 1, column 11>, spelling \"unused parameter \'i\'\">"
+    r = repr(tu.diagnostics[0])
+    expected = "<Diagnostic severity 2, location <SourceLocation file " \
+               "'t.c', line 1, column 11>, " \
+               'spelling \"unused parameter \'i\'\">'
+
+    assert r == expected
