@@ -399,6 +399,9 @@ CursorKinds = [
     # Represents a C++ lambda expression that produces a local function object.
     ('LAMBDA_EXPR', 144),
 
+    # Objective-c boolean literal.
+    ('OBJC_BOOL_LITERAL_EXPR', 145),
+
     # A statement whose specific kind is not exposed via this interface.
     #
     # Unexposed statements have the same operations as any other kind of statement;
