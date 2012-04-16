@@ -424,6 +424,19 @@ class CXUnsavedFile(Structure):
         ('length', c_ulong)
     ]
 
+class CXFile(ClangObject):
+    """Wrapper around CXFile type."""
+    def __init__(self, obj):
+        ClangObject.__init__(self, obj)
+
+class CXCursor(Structure):
+    """Low-level representation of a cursor."""
+    _fields_ = [
+        ('kind', c_uint),
+        ('xdata', c_int),
+        ('data', c_void_p * 3)
+    ]
+
 class CXTUResourceUsage(Structure):
     """Represents a raw CXTUResourceUsage struct."""
 
@@ -1254,7 +1267,6 @@ class FixIt(object):
     def __repr__(self):
         return "<FixIt range %r, value %r>" % (self.range, self.value)
 
-
 class Cursor(object):
     """An element with the abstract syntax tree of a translation unit.
 
@@ -1264,15 +1276,6 @@ class Cursor(object):
     Cursors are never instantiated directly. Instead, they are created from
     another pre-existing object, like a TranslationUnit.
     """
-
-    class CXCursor(Structure):
-        """Low-level representation of a cursor."""
-        _fields_ = [
-            ('kind', c_uint),
-            ('xdata', c_int),
-            ('data', c_void_p * 3)
-        ]
-
     def __init__(self, location=None, structure=None, tu=None):
         """Instantiate a cursor instance.
 
@@ -1286,7 +1289,7 @@ class Cursor(object):
             assert isinstance(location, SourceLocation)
 
         if structure is not None:
-            assert isinstance(structure, Cursor.CXCursor)
+            assert isinstance(structure, CXCursor)
 
         if tu is not None:
             assert isinstance(tu, TranslationUnit)
@@ -1682,7 +1685,7 @@ class Cursor(object):
     @staticmethod
     def from_struct(res, func, arguments):
         """ctypes errcheck handler to convert CXCursor into a Cursor."""
-        assert isinstance(res, Cursor.CXCursor)
+        assert isinstance(res, CXCursor)
 
         # FIXME: There should just be an isNull method.
         #if res == lib.clang_getNullCursor():
@@ -2013,7 +2016,7 @@ class Token(object):
     @CachedProperty
     def cursor(self):
         """Retrieve the Cursor this Token corresponds to."""
-        cursor = Cursor.CXCursor()
+        cursor = CXCursor()
         lib.clang_annotateTokens(self._struct.translation_unit,
                                  byref(self._struct), 1, byref(cursor))
 
@@ -2586,18 +2589,10 @@ class File(object):
     not provide an API for directly interacting with the file system.
     """
 
-    class CXFile(ClangObject):
-        """Wrapper around CXFile type.
-
-        Used internally by the module.
-        """
-        def __init__(self, obj):
-            ClangObject.__init__(self, obj)
-
     def __init__(self, filename=None, obj=None, tu=None):
         """Construct a File instance from arguments.
 
-        Instances can be created from a File.CXFile instance or by specifying a
+        Instances can be created from a CXFile instance or by specifying a
         filename. In both cases, a corresponding TranslationUnit must be
         provided for reference tracking.
 
@@ -2607,7 +2602,7 @@ class File(object):
         Arguments:
 
         filename -- String filename of file to obtain from translation unit.
-        obj -- File.CXFile instance to wrap.
+        obj -- CXFile instance to wrap.
         tu -- TranslationUnit to which this file belongs. Required.
         """
         assert tu is not None
@@ -2617,7 +2612,7 @@ class File(object):
             assert isinstance(filename, str)
 
         if obj is not None:
-            assert isinstance(obj, (c_object_p, File.CXFile))
+            assert isinstance(obj, (c_object_p, CXFile))
 
         self._tu = tu
 
@@ -2627,12 +2622,12 @@ class File(object):
                 raise Exception('File not found in translation unit: %s' %
                                 filename)
 
-            self._obj = File.CXFile(result)
+            self._obj = CXFile(result)
             return
 
         assert obj is not None
         if isinstance(obj, c_object_p):
-            self._obj = File.CXFile(obj)
+            self._obj = CXFile(obj)
             return
 
         self._obj = obj
@@ -2701,8 +2696,7 @@ class FileInclusion(object):
 # Register callback types in common container.
 callbacks['translation_unit_includes'] = CFUNCTYPE(None, c_object_p,
         POINTER(SourceLocation.CXSourceLocation), c_uint, py_object)
-callbacks['cursor_visit'] = CFUNCTYPE(c_int, Cursor.CXCursor, Cursor.CXCursor,
-                                      py_object)
+callbacks['cursor_visit'] = CFUNCTYPE(c_int, CXCursor, CXCursor, py_object)
 
 def register_functions(lib):
     """Register function prototypes with a libclang library instance.
@@ -2712,7 +2706,7 @@ def register_functions(lib):
     """
     # Functions are registered in strictly alphabetical order.
     lib.clang_annotateTokens.argtype = [TranslationUnit, POINTER(Token.CXToken),
-                                        c_uint, POINTER(Cursor.CXCursor)]
+                                        c_uint, POINTER(CXCursor)]
 
     lib.clang_codeCompleteAt.argtypes = [TranslationUnit, c_char_p, c_int,
             c_int, c_void_p, c_int, c_int]
@@ -2731,13 +2725,13 @@ def register_functions(lib):
     lib.clang_createTranslationUnit.argtypes = [Index, c_char_p]
     lib.clang_createTranslationUnit.restype = c_object_p
 
-    lib.clang_Cursor_isNull.argtypes = [Cursor.CXCursor]
+    lib.clang_Cursor_isNull.argtypes = [CXCursor]
     lib.clang_Cursor_isNull.restype = bool
 
-    lib.clang_CXXMethod_isStatic.argtypes = [Cursor.CXCursor]
+    lib.clang_CXXMethod_isStatic.argtypes = [CXCursor]
     lib.clang_CXXMethod_isStatic.restype = bool
 
-    lib.clang_CXXMethod_isVirtual.argtypes = [Cursor.CXCursor]
+    lib.clang_CXXMethod_isVirtual.argtypes = [CXCursor]
     lib.clang_CXXMethod_isVirtual.restype = bool
 
     lib.clang_defaultSaveOptions.argtypes = [TranslationUnit]
@@ -2758,7 +2752,7 @@ def register_functions(lib):
 
     lib.clang_disposeTranslationUnit.argtypes = [TranslationUnit]
 
-    lib.clang_equalCursors.argtypes = [Cursor.CXCursor, Cursor.CXCursor]
+    lib.clang_equalCursors.argtypes = [CXCursor, CXCursor]
     lib.clang_equalCursors.restype = bool
 
     lib.clang_equalLocations.argtypes = [SourceLocation.CXSourceLocation,
@@ -2783,8 +2777,8 @@ def register_functions(lib):
     lib.clang_getArraySize.argtypes = [Type.CXType]
     lib.clang_getArraySize.restype = c_longlong
 
-    lib.clang_getCanonicalCursor.argtypes = [Cursor.CXCursor]
-    lib.clang_getCanonicalCursor.restype = Cursor.CXCursor
+    lib.clang_getCanonicalCursor.argtypes = [CXCursor]
+    lib.clang_getCanonicalCursor.restype = CXCursor
     lib.clang_getCanonicalCursor.errcheck = Cursor.from_struct
 
     lib.clang_getCanonicalType.argtypes = [Type.CXType]
@@ -2811,62 +2805,62 @@ def register_functions(lib):
 
     lib.clang_getCursor.argtypes = [TranslationUnit,
                                     SourceLocation.CXSourceLocation]
-    lib.clang_getCursor.restype = Cursor.CXCursor
+    lib.clang_getCursor.restype = CXCursor
     # errcheck not defined because this is called directly from Cursor()
     # constructor.
 
-    lib.clang_getCursorDefinition.argtypes = [Cursor.CXCursor]
-    lib.clang_getCursorDefinition.restype = Cursor.CXCursor
+    lib.clang_getCursorDefinition.argtypes = [CXCursor]
+    lib.clang_getCursorDefinition.restype = CXCursor
     lib.clang_getCursorDefinition.errcheck = Cursor.from_struct
 
-    lib.clang_getCursorDisplayName.argtypes = [Cursor.CXCursor]
+    lib.clang_getCursorDisplayName.argtypes = [CXCursor]
     lib.clang_getCursorDisplayName.restype = CXString
     lib.clang_getCursorDisplayName.errcheck = CXString.from_result
 
-    lib.clang_getCursorExtent.argtypes = [Cursor.CXCursor]
+    lib.clang_getCursorExtent.argtypes = [CXCursor]
     lib.clang_getCursorExtent.restype = SourceRange.CXSourceRange
     lib.clang_getCursorExtent.errcheck = SourceRange.from_struct
 
-    lib.clang_getCursorLexicalParent.argtypes = [Cursor.CXCursor]
-    lib.clang_getCursorLexicalParent.restype = Cursor.CXCursor
+    lib.clang_getCursorLexicalParent.argtypes = [CXCursor]
+    lib.clang_getCursorLexicalParent.restype = CXCursor
     lib.clang_getCursorLexicalParent.errcheck = Cursor.from_struct
 
-    lib.clang_getCursorLocation.argtypes = [Cursor.CXCursor]
+    lib.clang_getCursorLocation.argtypes = [CXCursor]
     lib.clang_getCursorLocation.restype = SourceLocation.CXSourceLocation
     lib.clang_getCursorLocation.errcheck = SourceLocation.from_struct
 
-    lib.clang_getCursorReferenced.argtypes = [Cursor.CXCursor]
-    lib.clang_getCursorReferenced.restype = Cursor.CXCursor
+    lib.clang_getCursorReferenced.argtypes = [CXCursor]
+    lib.clang_getCursorReferenced.restype = CXCursor
     lib.clang_getCursorReferenced.errcheck = Cursor.from_struct
 
-    lib.clang_getCursorReferenceNameRange.argtypes = [Cursor.CXCursor, c_uint,
-                                                     c_uint]
+    lib.clang_getCursorReferenceNameRange.argtypes = [CXCursor, c_uint,
+                                                      c_uint]
     lib.clang_getCursorReferenceNameRange.restype = SourceRange.CXSourceRange
     lib.clang_getCursorReferenceNameRange.errcheck = SourceRange.from_struct
 
-    lib.clang_getCursorSemanticParent.argtypes = [Cursor.CXCursor]
-    lib.clang_getCursorSemanticParent.restype = Cursor.CXCursor
+    lib.clang_getCursorSemanticParent.argtypes = [CXCursor]
+    lib.clang_getCursorSemanticParent.restype = CXCursor
     lib.clang_getCursorSemanticParent.errcheck = Cursor.from_struct
 
-    lib.clang_getCursorSpelling.argtypes = [Cursor.CXCursor]
+    lib.clang_getCursorSpelling.argtypes = [CXCursor]
     lib.clang_getCursorSpelling.restype = CXString
     lib.clang_getCursorSpelling.errcheck = CXString.from_result
 
-    lib.clang_getCursorType.argtypes = [Cursor.CXCursor]
+    lib.clang_getCursorType.argtypes = [CXCursor]
     lib.clang_getCursorType.restype = Type.CXType
     lib.clang_getCursorType.errcheck = Type.from_struct
 
-    lib.clang_getCursorUSR.argtypes = [Cursor.CXCursor]
+    lib.clang_getCursorUSR.argtypes = [CXCursor]
     lib.clang_getCursorUSR.restype = CXString
     lib.clang_getCursorUSR.errcheck = CXString.from_result
 
     lib.clang_getCXTUResourceUsage.argtypes = [TranslationUnit]
     lib.clang_getCXTUResourceUsage.restype = CXTUResourceUsage
 
-    lib.clang_getCXXAccessSpecifier.argtypes = [Cursor.CXCursor]
+    lib.clang_getCXXAccessSpecifier.argtypes = [CXCursor]
     lib.clang_getCXXAccessSpecifier.restype = c_uint
 
-    lib.clang_getDeclObjCTypeEncoding.argtypes = [Cursor.CXCursor]
+    lib.clang_getDeclObjCTypeEncoding.argtypes = [CXCursor]
     lib.clang_getDeclObjCTypeEncoding.restype = CXString
     lib.clang_getDeclObjCTypeEncoding.errcheck = CXString.from_result
 
@@ -2914,7 +2908,7 @@ def register_functions(lib):
     lib.clang_getElementType.restype = Type.CXType
     lib.clang_getElementType.errcheck = Type.from_struct
 
-    lib.clang_getEnumDeclIntegerType.argtypes = [Cursor.CXCursor]
+    lib.clang_getEnumDeclIntegerType.argtypes = [CXCursor]
     lib.clang_getEnumDeclIntegerType.restype = Type.CXType
     lib.clang_getEnumDeclIntegerType.errcheck = Type.from_struct
 
@@ -2926,18 +2920,18 @@ def register_functions(lib):
     lib.clang_getFile.argtypes = [TranslationUnit, c_char_p]
     lib.clang_getFile.restype = c_object_p
 
-    lib.clang_getFileName.argtypes = [File.CXFile]
+    lib.clang_getFileName.argtypes = [CXFile]
     lib.clang_getFileName.restype = CXString
     lib.clang_getFileName.errcheck = CXString.from_result
 
-    lib.clang_getFileTime.argtypes = [File.CXFile]
+    lib.clang_getFileTime.argtypes = [CXFile]
     lib.clang_getFileTime.restype = c_uint
 
-    lib.clang_getIBOutletCollectionType.argtypes = [Cursor.CXCursor]
+    lib.clang_getIBOutletCollectionType.argtypes = [CXCursor]
     lib.clang_getIBOutletCollectionType.restype = Type.CXType
     lib.clang_getIBOutletCollectionType.errcheck = Type.from_struct
 
-    lib.clang_getIncludedFile.argtypes = [Cursor.CXCursor]
+    lib.clang_getIncludedFile.argtypes = [CXCursor]
     lib.clang_getIncludedFile.restype = c_object_p
 
     lib.clang_getInclusions.argtypes = [TranslationUnit,
@@ -2953,7 +2947,7 @@ def register_functions(lib):
     # errcheck omitted because this is called only by SourceLocation's
     # constructor.
 
-    lib.clang_getNullCursor.restype = Cursor.CXCursor
+    lib.clang_getNullCursor.restype = CXCursor
 
     lib.clang_getNumArgTypes.argtypes = [Type.CXType]
     lib.clang_getNumArgTypes.restype = c_uint
@@ -2967,11 +2961,11 @@ def register_functions(lib):
     lib.clang_getNumElements.argtypes = [Type.CXType]
     lib.clang_getNumElements.restype = c_longlong
 
-    lib.clang_getNumOverloadedDecls.argtypes = [Cursor.CXCursor]
+    lib.clang_getNumOverloadedDecls.argtypes = [CXCursor]
     lib.clang_getNumOverloadedDecls.restyp = c_uint
 
-    lib.clang_getOverloadedDecl.argtypes = [Cursor.CXCursor, c_uint]
-    lib.clang_getOverloadedDecl.restype = Cursor.CXCursor
+    lib.clang_getOverloadedDecl.argtypes = [CXCursor, c_uint]
+    lib.clang_getOverloadedDecl.restype = CXCursor
     lib.clang_getOverloadedDecl.errcheck = Cursor.from_struct
 
     lib.clang_getPointeeType.argtypes = [Type.CXType]
@@ -3001,8 +2995,8 @@ def register_functions(lib):
     lib.clang_getResultType.restype = Type.CXType
     lib.clang_getResultType.errcheck = Type.from_struct
 
-    lib.clang_getSpecializedCursorTemplate.argtypes = [Cursor.CXCursor]
-    lib.clang_getSpecializedCursorTemplate.restype = Cursor.CXCursor
+    lib.clang_getSpecializedCursorTemplate.argtypes = [CXCursor]
+    lib.clang_getSpecializedCursorTemplate.restype = CXCursor
     lib.clang_getSpecializedCursorTemplate.errcheck = Cursor.from_struct
 
     lib.clang_getSpellingLocation.argtypes = [SourceLocation.CXSourceLocation,
@@ -3012,7 +3006,7 @@ def register_functions(lib):
                                               POINTER(c_uint)]
     lib.clang_getSpellingLocation.restype = None
 
-    lib.clang_getTemplateCursorKind.argtypes = [Cursor.CXCursor]
+    lib.clang_getTemplateCursorKind.argtypes = [CXCursor]
     lib.clang_getTemplateCursorKind.restype = c_uint
 
     lib.clang_getTokenExtent.argtypes = [TranslationUnit, Token.CXToken]
@@ -3031,7 +3025,7 @@ def register_functions(lib):
     lib.clang_getTokenSpelling.errcheck = CXString.from_result
 
     lib.clang_getTranslationUnitCursor.argtypes = [TranslationUnit]
-    lib.clang_getTranslationUnitCursor.restype = Cursor.CXCursor
+    lib.clang_getTranslationUnitCursor.restype = CXCursor
     lib.clang_getTranslationUnitCursor.errcheck = Cursor.from_struct
 
     lib.clang_getTranslationUnitSpelling.argtypes = [TranslationUnit]
@@ -3042,10 +3036,10 @@ def register_functions(lib):
     lib.clang_getTUResourceUsageName.restype = c_char_p
 
     lib.clang_getTypeDeclaration.argtypes = [Type.CXType]
-    lib.clang_getTypeDeclaration.restype = Cursor.CXCursor
+    lib.clang_getTypeDeclaration.restype = CXCursor
     lib.clang_getTypeDeclaration.errcheck = Cursor.from_struct
 
-    lib.clang_getTypedefDeclUnderlyingType.argtypes = [Cursor.CXCursor]
+    lib.clang_getTypedefDeclUnderlyingType.argtypes = [CXCursor]
     lib.clang_getTypedefDeclUnderlyingType.restype = Type.CXType
     lib.clang_getTypedefDeclUnderlyingType.errcheck = Type.from_struct
 
@@ -3053,7 +3047,7 @@ def register_functions(lib):
     lib.clang_getTypeKindSpelling.restype = CXString
     lib.clang_getTypeKindSpelling.errcheck = CXString.from_result
 
-    lib.clang_hashCursor.argtypes = [Cursor.CXCursor]
+    lib.clang_hashCursor.argtypes = [CXCursor]
     lib.clang_hashCursor.restype = c_uint
 
     lib.clang_isAttribute.argtypes = [CursorKind]
@@ -3062,7 +3056,7 @@ def register_functions(lib):
     lib.clang_isConstQualifiedType.argtypes = [Type.CXType]
     lib.clang_isConstQualifiedType.restype = bool
 
-    lib.clang_isCursorDefinition.argtypes = [Cursor.CXCursor]
+    lib.clang_isCursorDefinition.argtypes = [CXCursor]
     lib.clang_isCursorDefinition.restype = bool
 
     lib.clang_isDeclaration.argtypes = [CursorKind]
@@ -3072,7 +3066,7 @@ def register_functions(lib):
     lib.clang_isExpression.restype = bool
 
     lib.clang_isFileMultipleIncludeGuarded.argtypes = [TranslationUnit,
-                                                       File.CXFile]
+                                                       CXFile]
     lib.clang_isFileMultipleIncludeGuarded.restype = bool
 
     lib.clang_isFunctionTypeVariadic.argtypes = [Type.CXType]
@@ -3102,7 +3096,7 @@ def register_functions(lib):
     lib.clang_isUnexposed.argtypes = [CursorKind]
     lib.clang_isUnexposed.restype = bool
 
-    lib.clang_isVirtualBase.argtypes = [Cursor.CXCursor]
+    lib.clang_isVirtualBase.argtypes = [CXCursor]
     lib.clang_isVirtualBase.restype = bool
 
     lib.clang_isVolatileQualifiedType.argtypes = [Type.CXType]
@@ -3123,7 +3117,7 @@ def register_functions(lib):
     lib.clang_tokenize.argtypes = [TranslationUnit, SourceRange.CXSourceRange,
             POINTER(POINTER(Token.CXToken)), POINTER(c_uint)]
 
-    lib.clang_visitChildren.argtypes = [Cursor.CXCursor,
+    lib.clang_visitChildren.argtypes = [CXCursor,
                                         callbacks['cursor_visit'],
                                         py_object]
     lib.clang_visitChildren.restype = c_uint
