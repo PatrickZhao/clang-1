@@ -471,6 +471,142 @@ class CXTUResourceUsage(Structure):
 
         return ret
 
+class CXIdxLoc(Structure):
+    _fields_ = [
+        ('ptr_data', c_void_p * 2),
+        ('int_data', c_uint)
+    ]
+
+class CXIdxIncludedFileInfo(Structure):
+    _fields_ = [
+        ('hash_location', CXIdxLoc),
+        ('filename', c_char_p),
+        ('file', c_void_p),
+        ('is_import', c_int),
+        ('is_angled', c_int)
+    ]
+
+class CXIdxImportedASTFileInfo(Structure):
+    _fields_ = [
+        ('file', c_void_p),
+        ('loc', CXIdxLoc),
+        ('is_module', c_int)
+    ]
+
+class CXIdxAttrInfo(Structure):
+    _fields_ = [
+        ('kind', c_int),
+        ('cursor', CXCursor),
+        ('location', CXIdxLoc)
+    ]
+
+class CXIdxEntityInfo(Structure):
+    _fields_ = [
+        ('kind', c_int),
+        ('template_kind', c_int),
+        ('language', c_int),
+        ('name', c_char_p),
+        ('usr', c_char_p),
+        ('cursor', CXCursor),
+        ('attributes', POINTER(CXIdxAttrInfo)),
+        ('attribute_length', c_uint)
+    ]
+
+class CXIdxContainerInfo(Structure):
+    _fields_ = [
+        ('cursor', CXCursor)
+    ]
+
+class CXIdxIBOutletCollectionAttrInfo(Structure):
+    _fields_ = [
+        ('attribute_info', CXIdxAttrInfo),
+        ('objc_class', CXIdxEntityInfo),
+        ('class_cursor', CXCursor),
+        ('class_location', CXIdxLoc)
+    ]
+
+class CXIdxDeclInfo(Structure):
+    _fields_ = [
+        ('entity_info', CXIdxEntityInfo),
+        ('cursor', CXCursor),
+        ('location', CXIdxLoc),
+        ('semantic_container', POINTER(CXIdxContainerInfo)),
+        ('lexical_container', POINTER(CXIdxContainerInfo)),
+        ('is_redeclaration', c_int),
+        ('is_definition', c_int),
+        ('is_container', c_int),
+        ('declaration_container', POINTER(CXIdxContainerInfo)),
+        ('is_implicit', c_int),
+        ('attributes', POINTER(CXIdxAttrInfo)),
+        ('attributes_length', c_uint)
+    ]
+
+class CXIdxObjCContainerDeclInfo(Structure):
+    _fields_ = [
+        ('declaration_info', CXIdxDeclInfo),
+        ('kind', c_int)
+    ]
+
+class CXIdxBaseClassInfo(Structure):
+    _fields_ = [
+        ('base', POINTER(CXIdxEntityInfo)),
+        ('cursor', CXCursor),
+        ('location', CXIdxLoc)
+    ]
+
+class CXIdxObjCProtocolRefInfo(Structure):
+    _fields_ = [
+        ('protocol', POINTER(CXIdxEntityInfo)),
+        ('cursor', CXCursor),
+        ('location', CXIdxLoc)
+    ]
+
+class CXIdxObjCProtocolRefListInfo(Structure):
+    _fields_ = [
+        ('protocols', POINTER(CXIdxObjCProtocolRefInfo)),
+        ('number', c_uint)
+    ]
+
+class CXIdxObjCInterfaceDeclInfo(Structure):
+    _fields_ = [
+        ('container', POINTER(CXIdxObjCContainerDeclInfo)),
+        ('super', POINTER(CXIdxBaseClassInfo)),
+        ('protocols', POINTER(CXIdxObjCProtocolRefListInfo))
+    ]
+
+class CXIdxObjCCategoryDeclInfo(Structure):
+   _fields_ = [
+        ('container', POINTER(CXIdxObjCContainerDeclInfo)),
+        ('class', POINTER(CXIdxEntityInfo)),
+        ('cursor', CXCursor),
+        ('location', CXIdxLoc),
+        ('protocols', POINTER(CXIdxObjCProtocolRefListInfo))
+    ]
+
+class CXIdxObjCPropertyDeclInfo(Structure):
+    _fields_ = [
+        ('declaration', POINTER(CXIdxDeclInfo)),
+        ('getter', POINTER(CXIdxEntityInfo)),
+        ('setter', POINTER(CXIdxEntityInfo))
+    ]
+
+class CXIdxCXXClassDeclInfo(Structure):
+    _fields_ = [
+        ('declaration', POINTER(CXIdxDeclInfo)),
+        ('bases', POINTER(CXIdxBaseClassInfo)),
+        ('bases_length', c_uint)
+    ]
+
+class CXIdxEntityRefInfo(Structure):
+    _fields_ = [
+        ('kind', c_int),
+        ('cursor', CXCursor),
+        ('location', CXIdxLoc),
+        ('entity', POINTER(CXIdxEntityInfo)),
+        ('parent', POINTER(CXIdxEntityInfo)),
+        ('container', POINTER(CXIdxContainerInfo))
+    ]
+
 ### Enumerations Classes ###
 
 class CXXAccessSpecifier(object):
@@ -2697,6 +2833,20 @@ class FileInclusion(object):
 callbacks['translation_unit_includes'] = CFUNCTYPE(None, c_object_p,
         POINTER(SourceLocation.CXSourceLocation), c_uint, py_object)
 callbacks['cursor_visit'] = CFUNCTYPE(c_int, CXCursor, CXCursor, py_object)
+callbacks['indexer_abort_query'] = CFUNCTYPE(c_int, py_object, c_void_p)
+#callbacks['indexer_diagnostic'] = CFUNCTYPE(None, py_object,
+#        CXDiagnosticSet, c_void_p)
+callbacks['indexer_entered_main_file'] = CFUNCTYPE(c_object_p,
+        py_object, CXFile, c_void_p)
+callbacks['indexer_included_file'] = CFUNCTYPE(c_object_p, py_object,
+        POINTER(CXIdxIncludedFileInfo))
+callbacks['indexer_imported_ast_file'] = CFUNCTYPE(c_object_p,
+        py_object, POINTER(CXIdxImportedASTFileInfo))
+callbacks['indexer_started_tu'] = CFUNCTYPE(c_object_p, py_object, c_void_p)
+callbacks['indxer_declaration'] = CFUNCTYPE(None, py_object,
+        POINTER(CXIdxDeclInfo))
+callbacks['indexer_entity_reference'] = CFUNCTYPE(None, py_object,
+        POINTER(CXIdxEntityRefInfo))
 
 def register_functions(lib):
     """Register function prototypes with a libclang library instance.
